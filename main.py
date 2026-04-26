@@ -1,4 +1,5 @@
 import json
+import traceback
 from flask import Flask, request
 import requests
 from config import *
@@ -28,6 +29,7 @@ def send_menu(user_id):
         keyboard=main_menu())
 
 def handle_message(user_id, text):
+    print(f"🔄 handle_message: user={user_id}, text={text}")
     user = get_user(user_id)
     state = user_states.get(user_id, MENU)
     text_lower = text.lower().strip()
@@ -50,9 +52,7 @@ def handle_message(user_id, text):
 
     if text == "🔥 Премиум (99₽)":
         user_states[user_id] = AI_WAITING
-        send_message(user_id,
-            f"🔥 ПРЕМИУМ НАСТРОЙКА — {PREMIUM_PRICE}₽\n\n✅ Под твой телефон\n✅ Под твой стиль игры\n✅ Под твоё оружие\n✅ 2 бесплатные корректировки\n\n👇 Жми кнопку для оплаты:",
-            keyboard=premium_keyboard())
+        send_message(user_id, f"🔥 ПРЕМИУМ НАСТРОЙКА — {PREMIUM_PRICE}₽\n\n✅ Под твой телефон\n✅ Под твой стиль игры\n✅ Под твоё оружие\n✅ 2 бесплатные корректировки\n\n👇 Жми кнопку для оплаты:", keyboard=premium_keyboard())
         return
 
     if text == "✅ Оплатить 99₽":
@@ -149,23 +149,30 @@ def handle_message(user_id, text):
 
 @app.route("/callback", methods=["POST"])
 def callback():
-    body = request.get_json()
-    print(f"📥 Входящий запрос: {body.get('type')}")
+    print("=" * 40)
+    print("📥 ПОЛУЧЕН ЗАПРОС НА /callback")
+    try:
+        body = request.get_json()
+        print(f"📦 Тело запроса: {json.dumps(body, ensure_ascii=False)}")
+        
+        if body.get("type") == "confirmation":
+            print("✅ Отправляю подтверждение: " + CONFIRMATION_CODE)
+            return CONFIRMATION_CODE
 
-    if body.get("type") == "confirmation":
-        print("✅ Отправляю подтверждение")
-        return CONFIRMATION_CODE
+        if body.get("type") == "message_new":
+            obj = body.get("object", {})
+            msg = obj.get("message", {})
+            user_id = msg.get("from_id")
+            text = msg.get("text", "")
+            print(f"💬 Сообщение от {user_id}: {text}")
+            if user_id and text:
+                handle_message(user_id, text)
 
-    if body.get("type") == "message_new":
-        obj = body.get("object", {})
-        msg = obj.get("message", {})
-        user_id = msg.get("from_id")
-        text = msg.get("text", "")
-        print(f"💬 Сообщение от {user_id}: {text}")
-        if user_id and text:
-            handle_message(user_id, text)
-
-    return "ok"
+        return "ok"
+    except Exception as e:
+        print(f"❌ ОШИБКА: {e}")
+        print(traceback.format_exc())
+        return "ok"
 
 if __name__ == "__main__":
     print("=" * 40)
