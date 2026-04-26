@@ -28,11 +28,11 @@ def send_menu(user_id):
         "one_time": False,
         "buttons": [
             [{"action": {"type": "text", "label": "📱 Бесплатные настройки"}, "color": "primary"}],
-            [{"action": {"type": "text", "label": "🔥 Премиум (99₽)"}, "color": "positive"}],
+            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
             [{"action": {"type": "text", "label": "❓ Как это работает"}, "color": "secondary"}],
         ]
     }
-    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire. Выбирай:\n\n📱 БЕСПЛАТНЫЕ НАСТРОЙКИ\nГотовые конфиги под популярные телефоны\n\n🔥 ПРЕМИУМ НАСТРОЙКА — 99₽\nИИ подбирает лично под тебя!", keyboard=kb)
+    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги под популярные телефоны\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽", keyboard=kb)
 
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -60,6 +60,23 @@ def show_log():
     except:
         return "empty"
 
+def back_and_menu_kb():
+    return {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+             {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+        ]
+    }
+
+def menu_only_kb():
+    return {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+        ]
+    }
+
 def handle_message(user_id, text):
     with open("/tmp/bot.log", "a") as f:
         f.write(f"HANDLE: {text}\n")
@@ -74,7 +91,7 @@ def handle_message(user_id, text):
         return
 
     if t in ["❓ Как это работает", "помощь", "help"]:
-        send_message(user_id, "🤖 Бот для настроек Free Fire\n\n📱 Бесплатно — шаблоны\n🔥 Премиум 99₽ — ИИ подбирает лично\n🔄 Корректировка — 2 шт после премиума")
+        send_message(user_id, "🤖 Бот для настроек Free Fire\n\n📱 Бесплатно — шаблоны\n🔥 Премиум 99₽ — ИИ подбирает лично\n🔄 Корректировка — 2 шт после премиума", keyboard=back_and_menu_kb())
         return
 
     if t == "📱 Бесплатные настройки":
@@ -89,15 +106,16 @@ def handle_message(user_id, text):
                 row = []
         if row:
             kb["buttons"].append(row)
-        kb["buttons"].append([{"action": {"type": "text", "label": "← Назад в меню"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери марку:", keyboard=kb)
+        kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+                              {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
+        send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
-    if t == "🔥 Премиум (99₽)":
+    if t == "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽":
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
-        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.")
+        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -121,21 +139,20 @@ def handle_message(user_id, text):
                 row = []
         if row:
             kb["buttons"].append(row)
-        kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери модель (номер или название):", keyboard=kb)
+        kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+                              {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
+        send_message(user_id, "📱 Выбери модель (напиши номер или название):", keyboard=kb)
         return
 
-    if t in ["← Назад в меню", "← Назад", "Назад", "Назад в меню"]:
+    if t == "← Назад":
         user_states[user_id] = "MENU"
         send_menu(user_id)
         return
 
-    after_config_kb = {
-        "one_time": False,
-        "buttons": [
-            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
-        ]
-    }
+    if t == "🏠 В меню":
+        user_states[user_id] = "MENU"
+        send_menu(user_id)
+        return
 
     # Выбор по номеру
     if t.split(".")[0].isdigit():
@@ -145,7 +162,7 @@ def handle_message(user_id, text):
             phone = cat[num - 1]
             config = get_config(phone)
             if config:
-                send_message(user_id, config, keyboard=after_config_kb)
+                send_message(user_id, config, keyboard=menu_only_kb())
                 return
 
     # Прямой поиск
@@ -153,45 +170,45 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config, keyboard=after_config_kb)
+            send_message(user_id, config, keyboard=menu_only_kb())
             return
 
     # ИИ опрос
     if state == "AI_ASK_PHONE":
         user.phone = t
         user_states[user_id] = "AI_ASK_RAM"
-        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ")
+        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
         user.ram = t
         user_states[user_id] = "AI_ASK_STYLE"
-        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный")
+        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
         user.style = t
         user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 5:\nОружие?\nНапример: M4A1, AK47, SCAR")
+        send_message(user_id, "🔫 Вопрос 4 из 5:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t
         user_states[user_id] = "AI_ASK_FINGERS"
-        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?\n• 2\n• 4\n• 6")
+        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки... (пока заглушка)", keyboard=after_config_kb)
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке — вот базовая настройка под твой телефон)", keyboard=menu_only_kb())
         return
 
     if "корректировка" in t.lower():
-        send_message(user_id, "🔄 Корректировка пока в разработке")
+        send_message(user_id, "🔄 Корректировка пока в разработке", keyboard=back_and_menu_kb())
         return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
         send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {len(user_states)}\n📱 Моделей: {len(PHONES)}")
         return
 
-    send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».")
+    send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
