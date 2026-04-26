@@ -10,15 +10,13 @@ from keyboards import *
 
 app = Flask(__name__)
 user_states = {}
+last_category = {}  # запоминаем последнюю категорию для выбора по номеру
 
 def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
     resp = requests.post(f"https://api.vk.com/method/{method}", params=params)
-    result = resp.json()
-    with open("/tmp/bot.log", "a") as f:
-        f.write(f"VK API {method}: {json.dumps(result)}\n")
-    return result
+    return resp.json()
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
@@ -77,17 +75,37 @@ def handle_message(user_id, text):
     }
 
     if text in categories:
+        last_category[user_id] = categories[text]
         kb = {"one_time": False, "buttons": []}
+        row = []
+        count = 0
         for phone in categories[text]:
-            kb["buttons"].append([{"action": {"type": "text", "label": phone.title(), "payload": "phone"}, "color": "primary"}])
-        kb["buttons"].append([{"action": {"type": "text", "label": "⬅ Назад", "payload": "back"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери модель:", keyboard=kb)
+            count += 1
+            row.append({"action": {"type": "text", "label": f"{count}. {phone.title()}", "payload": "{}"}, "color": "primary"})
+            if len(row) == 1:
+                kb["buttons"].append(row)
+                row = []
+        if row:
+            kb["buttons"].append(row)
+        kb["buttons"].append([{"action": {"type": "text", "label": "⬅ Назад", "payload": "{}"}, "color": "secondary"}])
+        send_message(user_id, "📱 Выбери модель (напиши номер):", keyboard=kb)
         return
 
     if text in ["⬅ Назад", "⬅ Назад в меню", "🏠 В меню"]:
         user_states[user_id] = MENU
         send_menu(user_id)
         return
+
+    # Обработка выбора по номеру
+    if text.isdigit():
+        num = int(text)
+        cat = last_category.get(user_id, [])
+        if 1 <= num <= len(cat):
+            phone = cat[num - 1]
+            config = get_config(phone)
+            if config:
+                send_message(user_id, config, keyboard=done_keyboard())
+                return
 
     phone = find_phone(text)
     if phone:
@@ -173,19 +191,6 @@ def callback():
             threading.Thread(target=handle_message, args=(user_id, text)).start()
 
     return "ok"
-    
-@app.route("/log")
-def show_log():
-    try:
-        with open("/tmp/bot.log", "r") as f:
-            return f.read().replace("\n", "<br>")
-    except:
-        return "Лог пуст"
-        
+
 if __name__ == "__main__":
-    print("=" * 40)
-    print("🎮 Free Fire Settings Bot")
-    print("📡 Flask + Callback API")
-    print(f"🔗 Порт: {PORT}")
-    print("=" * 40)
     app.run(host="0.0.0.0", port=PORT)
