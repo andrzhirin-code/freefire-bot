@@ -1,401 +1,260 @@
-# main.py
-# Free Fire Settings Bot — Главный Файл
-# Версия 1.0.0
-
+import json
 import asyncio
-import re
-from vkbottle import Bot, Keyboard, Text
-from vkbottle.bot import Message, rules
+import aiohttp
+from aiohttp import web
 from config import *
 from states import *
-from database import get_user, reset_user
+from database import get_user
 from phones_db import *
 from prompts import SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
 from keyboards import *
-import aiohttp
 
-# Инициализация бота
-bot = Bot(token=VK_TOKEN)
+# Хранилище состояний
+user_states = {}
 
-# ============================================================
-# 🔧 ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-# ============================================================
+# ==================== VK API ====================
 
-async def call_deepseek(prompt):
-    """Запрос к DeepSeek API"""
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
+async def vk_api(method, params):
+    params["v"] = "5.131"
+    params["access_token"] = VK_TOKEN
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"https://api.vk.com/method/{method}", params=params) as resp:
+            return await resp.json()
+
+async def send_message(user_id, text, keyboard=None):
+    params = {
+        "user_id": user_id,
+        "message": text,
+        "random_id": 0
     }
-    data = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.7,
-        "max_tokens": 1500
-    }
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.deepseek.com/v1/chat/completions",
-                headers=headers,
-                json=data
-            ) as response:
-                result = await response.json()
-                return result["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"❌ Ошибка ИИ. Попробуй позже.\n(Код ошибки: {str(e)[:100]})"
+    if keyboard:
+        params["keyboard"] = json.dumps(keyboard)
+    return await vk_api("messages.send", params)
 
-def is_paid(user_id):
-    """Проверка оплаты (заглушка — в реальности проверка через VK Pay API)"""
-    # TODO: Интеграция с VK Pay Callback API
-    # Пока считаем что PREMIUM_ACTIVE проверяется через базу
-    user = get_user(user_id)
-    return user.premium_active
+# ==================== МЕНЮ ====================
 
-async def send_menu(message: Message):
-    """Отправка главного меню"""
-    await message.answer(
+async def send_menu(user_id):
+    await send_message(user_id,
         "🎮 Привет, боец!\n\n"
         "Я бот по настройкам Free Fire. Выбирай:\n\n"
         "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ\n"
         "Готовые конфиги под популярные телефоны\n\n"
         "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽\n"
-        "ИИ подбирает лично под тебя!\n"
-        "• Под твой телефон\n"
-        "• Под твой стиль игры\n"
-        "• Под твои проблемы\n\n"
-        "👇 Жми на кнопку внизу!",
+        "ИИ подбирает лично под тебя!",
         keyboard=main_menu()
     )
 
-# ============================================================
-# 📩 ОБРАБОТЧИКИ КОМАНД
-# ============================================================
+# ==================== ОБРАБОТЧИК СООБЩЕНИЙ ====================
 
-@bot.on.message(text=["меню", "Меню", "начать", "старт", "start"])
-async def menu_command(message: Message):
-    user = get_user(message.from_id)
-    user.state = MENU
-    await send_menu(message)
-
-@bot.on.message(text=["❓ Как это работает", "помощь", "help"])
-async def help_command(message: Message):
-    await message.answer(
-        "🤖 КАК ПОЛЬЗОВАТЬСЯ БОТОМ\n\n"
-        "📱 БЕСПЛАТНО:\n"
-        "1. Жми «Бесплатные настройки»\n"
-        "2. Выбери марку телефона\n"
-        "3. Выбери модель\n"
-        "4. Получи готовый конфиг\n\n"
-        "🔥 ПРЕМИУМ (99₽):\n"
-        "1. Жми «Премиум»\n"
-        "2. Оплати 99₽ через VK Pay\n"
-        "3. Ответь на 5 вопросов\n"
-        "4. ИИ выдаст ТВОИ личные настройки\n\n"
-        "🔄 КОРРЕКТИРОВКА:\n"
-        "• После получения настроек напиши «корректировка»\n"
-        "• Доступно 2 бесплатные корректировки\n"
-        "• Потом жди 14 дней\n\n"
-        "Понял? Жми кнопку и погнали! 🚀",
-        keyboard=main_menu()
-    )
-
-@bot.on.message(text=["📱 Бесплатные настройки"])
-async def free_settings(message: Message):
-    user = get_user(message.from_id)
-    user.state = FREE_PHONES
-    await message.answer(
-        "📱 Выбери марку телефона:",
-        keyboard=categories_menu()
-    )
-
-@bot.on.message(text=["🔥 Премиум (99₽)"])
-async def premium_start(message: Message):
-    user = get_user(message.from_id)
-    user.state = AI_WAITING
-    await message.answer(
-        f"🔥 ПРЕМИУМ НАСТРОЙКА — {PREMIUM_PRICE}₽\n\n"
-        "Что ты получишь:\n"
-        "✅ Настройки под твой телефон\n"
-        "✅ Под твой стиль игры\n"
-        "✅ Под твоё оружие\n"
-        "✅ Решение твоих проблем\n"
-        "✅ 2 бесплатные корректировки\n\n"
-        "Оплата через VK Pay — безопасно и мгновенно!\n\n"
-        "👇 Жми кнопку для оплаты:",
-        keyboard=premium_keyboard()
-    )
-
-@bot.on.message(text=["✅ Оплатить 99₽"])
-async def pay_command(message: Message):
-    user = get_user(message.from_id)
-    # Заглушка — считаем что оплата прошла
-    # В реальности: интеграция с VK Pay API
-    user.premium_active = True
-    user.state = AI_ASK_PHONE
-    user.corrections_left = MAX_CORRECTIONS
-    await message.answer(
-        "✅ Оплата прошла!\n\n"
-        "Сейчас ИИ подберёт настройки под тебя.\n\n"
-        "📱 Вопрос 1 из 6:\n"
-        "Напиши точную модель телефона.\n"
-        "Например: Redmi Note 10, iPhone 11, Samsung A54\n\n"
-        "⚠️ Пиши точную модель, от этого зависит результат!",
-        keyboard=back_button()
-    )
-
-# ============================================================
-# 📱 ОБРАБОТКА КАТЕГОРИЙ ТЕЛЕФОНОВ
-# ============================================================
-
-@bot.on.message(text=["📱 Xiaomi (Redmi/Poco)"])
-async def cat_xiaomi(message: Message):
-    await show_phones(message, CATEGORIES["📱 Xiaomi (Redmi/Poco)"])
-
-@bot.on.message(text=["📱 Samsung"])
-async def cat_samsung(message: Message):
-    await show_phones(message, CATEGORIES["📱 Samsung"])
-
-@bot.on.message(text=["📱 iPhone"])
-async def cat_iphone(message: Message):
-    await show_phones(message, CATEGORIES["📱 iPhone"])
-
-@bot.on.message(text=["📱 Realme"])
-async def cat_realme(message: Message):
-    await show_phones(message, CATEGORIES["📱 Realme"])
-
-@bot.on.message(text=["📱 Tecno/Infinix"])
-async def cat_tecno(message: Message):
-    await show_phones(message, CATEGORIES["📱 Tecno/Infinix"])
-
-@bot.on.message(text=["📱 Другие"])
-async def cat_other(message: Message):
-    await show_phones(message, CATEGORIES["📱 Другие"])
-
-async def show_phones(message: Message, phones):
-    keyboard = Keyboard(one_time=False)
-    for phone in phones:
-        keyboard.add(Text(phone.title()))
-    keyboard.row()
-    keyboard.add(Text("⬅ Назад"))
-    await message.answer(
-        "📱 Выбери модель телефона:",
-        keyboard=keyboard
-    )
-
-# ============================================================
-# 🔍 ПОИСК ТЕЛЕФОНА ПО ТЕКСТУ
-# ============================================================
-
-@bot.on.message()
-async def handle_message(message: Message):
-    user_id = message.from_id
+async def handle_message(user_id, text):
     user = get_user(user_id)
-    text = message.text.strip()
-    
-    # Пропускаем команды, обработанные выше
-    if message.text in ["меню", "Меню", "начать", "старт", "start",
-                        "❓ Как это работает", "помощь", "help",
-                        "📱 Бесплатные настройки", "🔥 Премиум (99₽)",
-                        "✅ Оплатить 99₽", "📱 Xiaomi (Redmi/Poco)",
-                        "📱 Samsung", "📱 iPhone", "📱 Realme",
-                        "📱 Tecno/Infinix", "📱 Другие"]:
+    state = user_states.get(user_id, MENU)
+    text_lower = text.lower().strip()
+
+    # Меню
+    if text_lower in ["меню", "начать", "старт", "start"]:
+        user_states[user_id] = MENU
+        await send_menu(user_id)
         return
-    
-    # Кнопка назад
-    if text in ["⬅ Назад", "⬅ Назад в меню"]:
-        await send_menu(message)
-        user.state = MENU
+
+    # Помощь
+    if text in ["❓ Как это работает", "помощь", "help"]:
+        await send_message(user_id,
+            "🤖 КАК ПОЛЬЗОВАТЬСЯ БОТОМ\n\n"
+            "📱 БЕСПЛАТНО:\n"
+            "1. Жми «Бесплатные настройки»\n"
+            "2. Выбери марку и модель телефона\n"
+            "3. Получи готовый конфиг\n\n"
+            "🔥 ПРЕМИУМ (99₽):\n"
+            "1. Жми «Премиум»\n"
+            "2. Оплати через VK Pay\n"
+            "3. Ответь на 5 вопросов\n"
+            "4. ИИ выдаст ТВОИ личные настройки\n\n"
+            "🔄 КОРРЕКТИРОВКА:\n"
+            "• Напиши «корректировка» после получения\n"
+            "• Доступно 2 бесплатные корректировки",
+            keyboard=main_menu()
+        )
         return
-    
-    if text == "🏠 В меню":
-        await send_menu(message)
-        user.state = MENU
+
+    # Бесплатные настройки
+    if text == "📱 Бесплатные настройки":
+        user_states[user_id] = FREE_PHONES
+        await send_message(user_id, "📱 Выбери марку телефона:", keyboard=categories_menu())
         return
-    
-    # ==================== СОСТОЯНИЕ: БЕСПЛАТНЫЕ НАСТРОЙКИ ====================
-    if user.state == FREE_PHONES or True:  # Всегда пробуем найти телефон
-        phone = find_phone(text)
-        if phone:
-            config = get_config(phone)
-            if config:
-                await message.answer(
-                    config,
-                    keyboard=done_keyboard()
-                )
-                return
-    
-    # ==================== СОСТОЯНИЕ: ИИ ОПРОС ====================
-    if user.state == AI_ASK_PHONE:
+
+    # Премиум
+    if text == "🔥 Премиум (99₽)":
+        user_states[user_id] = AI_WAITING
+        await send_message(user_id,
+            f"🔥 ПРЕМИУМ НАСТРОЙКА — {PREMIUM_PRICE}₽\n\n"
+            "✅ Под твой телефон\n"
+            "✅ Под твой стиль игры\n"
+            "✅ Под твоё оружие\n"
+            "✅ 2 бесплатные корректировки\n\n"
+            "👇 Жми кнопку для оплаты:",
+            keyboard=premium_keyboard()
+        )
+        return
+
+    # Оплата
+    if text == "✅ Оплатить 99₽":
+        user.premium_active = True
+        user.corrections_left = MAX_CORRECTIONS
+        user_states[user_id] = AI_ASK_PHONE
+        await send_message(user_id,
+            "✅ Оплата прошла!\n\n"
+            "📱 Вопрос 1 из 5:\n"
+            "Напиши точную модель телефона.\n"
+            "Например: Redmi Note 10, iPhone 11",
+            keyboard=back_button()
+        )
+        return
+
+    # Категории телефонов
+    categories = {
+        "📱 Xiaomi (Redmi/Poco)": CATEGORIES["📱 Xiaomi (Redmi/Poco)"],
+        "📱 Samsung": CATEGORIES["📱 Samsung"],
+        "📱 iPhone": CATEGORIES["📱 iPhone"],
+        "📱 Realme": CATEGORIES["📱 Realme"],
+        "📱 Tecno/Infinix": CATEGORIES["📱 Tecno/Infinix"],
+        "📱 Другие": CATEGORIES["📱 Другие"],
+    }
+
+    if text in categories:
+        kb = {"one_time": False, "buttons": []}
+        for phone in categories[text]:
+            kb["buttons"].append([{"action": {"type": "text", "label": phone.title(), "payload": "phone"}, "color": "primary"}])
+        kb["buttons"].append([{"action": {"type": "text", "label": "⬅ Назад", "payload": "back"}, "color": "secondary"}])
+        await send_message(user_id, "📱 Выбери модель:", keyboard=kb)
+        return
+
+    # Назад
+    if text in ["⬅ Назад", "⬅ Назад в меню", "🏠 В меню"]:
+        user_states[user_id] = MENU
+        await send_menu(user_id)
+        return
+
+    # Поиск телефона
+    phone = find_phone(text)
+    if phone:
+        config = get_config(phone)
+        if config:
+            await send_message(user_id, config, keyboard=done_keyboard())
+            return
+
+    # ИИ опрос
+    if state == AI_ASK_PHONE and user.premium_active:
         user.phone = text
-        user.state = AI_ASK_RAM
-        await message.answer(
-            "📱 Вопрос 2 из 6:\n"
-            "Сколько у тебя ОЗУ (оперативной памяти)?\n\n"
-            "• 2-3 ГБ\n"
-            "• 4-6 ГБ\n"
-            "• 8+ ГБ\n"
-            "• Не знаю\n\n"
-            "Напиши один из вариантов.",
-            keyboard=back_button()
-        )
+        user_states[user_id] = AI_ASK_RAM
+        await send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_button())
         return
-    
-    if user.state == AI_ASK_RAM:
+
+    if state == AI_ASK_RAM:
         user.ram = text
-        user.state = AI_ASK_STYLE
-        await message.answer(
-            "🎮 Вопрос 3 из 6:\n"
-            "Какой у тебя стиль игры?\n\n"
-            "• Агрессивный (ближний бой, быстрые свайпы)\n"
-            "• Пассивный (дальний бой, точность)\n"
-            "• Смешанный\n\n"
-            "Напиши свой стиль.",
-            keyboard=back_button()
-        )
+        user_states[user_id] = AI_ASK_STYLE
+        await send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_button())
         return
-    
-    if user.state == AI_ASK_STYLE:
+
+    if state == AI_ASK_STYLE:
         user.style = text
-        user.state = AI_ASK_WEAPON
-        await message.answer(
-            "🔫 Вопрос 4 из 6:\n"
-            "Какое основное оружие используешь?\n\n"
-            "Например: M4A1, AK47, SCAR, Groza, MP40, MAG-7\n\n"
-            "Напиши название оружия.",
-            keyboard=back_button()
-        )
+        user_states[user_id] = AI_ASK_WEAPON
+        await send_message(user_id, "🔫 Вопрос 4 из 5:\nОружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_button())
         return
-    
-    if user.state == AI_ASK_WEAPON:
+
+    if state == AI_ASK_WEAPON:
         user.weapon = text
-        user.state = AI_ASK_FINGERS
-        await message.answer(
-            "🤟 Вопрос 5 из 6:\n"
-            "Сколько пальцев используешь?\n\n"
-            "• 2 пальца\n"
-            "• 4 пальца (коготь)\n"
-            "• 6 пальцев\n\n"
-            "Напиши количество.",
-            keyboard=back_button()
-        )
+        user_states[user_id] = AI_ASK_FINGERS
+        await send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_button())
         return
-    
-    if user.state == AI_ASK_FINGERS:
+
+    if state == AI_ASK_FINGERS:
         user.fingers = text
-        user.state = AI_ASK_PROBLEM
-        await message.answer(
-            "🔧 Вопрос 6 из 6 (последний):\n"
-            "Есть конкретная проблема?\n\n"
-            "Например:\n"
-            "• Трудно контролить отдачу\n"
-            "• Медленный поворот\n"
-            "• Промахи в ближнем бою\n"
-            "• Телефон греется и тормозит\n\n"
-            "Если проблем нет — напиши «нет»",
-            keyboard=back_button()
-        )
-        return
-    
-    if user.state == AI_ASK_PROBLEM:
-        user.problem = text if text.lower() != "нет" else ""
-        user.state = AI_DONE
-        
-        await message.answer("🤖 ИИ анализирует твои данные и подбирает настройки...\nЭто займёт 5-10 секунд.")
-        
-        prompt = build_user_prompt(user)
-        response = await call_deepseek(prompt)
-        
-        await message.answer(
-            response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n"
-            f"💬 Напиши «корректировка» если нужно что-то исправить.",
-            keyboard=done_keyboard()
-        )
-        return
-    
-    # ==================== СОСТОЯНИЕ: КОРРЕКТИРОВКА ====================
-    if user.state == AI_DONE or user.state == CORRECTION:
-        if "корректировка" in text.lower():
-            if user.corrections_left > 0:
-                user.state = CORRECTION
-                await message.answer(
-                    "🔄 РЕЖИМ КОРРЕКТИРОВКИ\n\n"
-                    "Напиши ЧТО именно нужно исправить.\n"
-                    "Например:\n"
-                    "• «трудно контролить отдачу»\n"
-                    "• «медленный поворот»\n"
-                    "• «неудобно нажимать кнопку огня»\n\n"
-                    "Не пиши просто «плохо» — объясни что не так.\n"
-                    f"У тебя осталось: {user.corrections_left} корректировка",
-                    keyboard=back_button()
-                )
-                return
-            else:
-                await message.answer(
-                    "❌ Лимит корректировок исчерпан.\n\n"
-                    f"Новая персональная настройка будет доступна через {DAYS_BEFORE_NEW} дней.\n"
-                    "А пока можешь использовать бесплатные шаблоны!",
-                    keyboard=main_menu()
-                )
-                return
-        
-        if user.state == CORRECTION:
-            user.corrections_left -= 1
-            await message.answer("🤖 ИИ пересчитывает настройки с учётом проблемы...")
-            
-            prompt = build_correction_prompt(user, text)
-            response = await call_deepseek(prompt)
-            
-            await message.answer(
-                response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}",
+        user_states[user_id] = AI_DONE
+
+        if DEEPSEEK_API_KEY:
+            await send_message(user_id, "🤖 ИИ подбирает настройки... 5-10 секунд.")
+            prompt = build_user_prompt(user)
+            # Заглушка — здесь будет DeepSeek API
+            await send_message(user_id,
+                f"🎯 ТВОЯ ПЕРСОНАЛЬНАЯ ОТТЯЖКА\n\n"
+                f"📱 {user.phone} | {user.ram}\n"
+                f"🔫 {user.weapon} | 🎮 {user.style} | 🤟 {user.fingers}\n\n"
+                f"⚙️ ИИ-подбор временно недоступен.\n"
+                f"Вот базовая настройка под твой телефон:",
                 keyboard=done_keyboard()
             )
-            user.state = AI_DONE
-            return
+        else:
+            phone = find_phone(user.phone)
+            if phone:
+                config = get_config(phone)
+                await send_message(user_id, config, keyboard=done_keyboard())
+            else:
+                await send_message(user_id, "❌ Модель не найдена.", keyboard=main_menu())
+        return
+
+    # Корректировка
+    if "корректировка" in text_lower:
+        if state in [AI_DONE, CORRECTION]:
+            if user.corrections_left > 0:
+                user_states[user_id] = CORRECTION
+                await send_message(user_id, f"🔄 РЕЖИМ КОРРЕКТИРОВКИ\n\nНапиши что исправить.\nОсталось: {user.corrections_left}", keyboard=back_button())
+            else:
+                await send_message(user_id, "❌ Лимит корректировок исчерпан.", keyboard=main_menu())
+        return
+
+    if state == CORRECTION:
+        user.corrections_left -= 1
+        await send_message(user_id, f"✅ Корректировка принята! Осталось: {user.corrections_left}", keyboard=done_keyboard())
+        user_states[user_id] = AI_DONE
+        return
+
+    # Админ-панель
+    if text in ["/stat", "/admin"] and user_id == ADMIN_ID:
+        await send_message(user_id,
+            f"📊 СТАТИСТИКА\n\n"
+            f"👥 Пользователей: {len(user_states)}\n"
+            f"📱 Моделей в базе: {len(PHONES)}\n"
+            f"🖥 Сервер: Online"
+        )
+        return
+
+    # Дефолт
+    await send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=main_menu())
+
+# ==================== CALLBACK СЕРВЕР ====================
+
+async def callback_handler(request):
+    body = await request.json()
+    if body.get("type") == "confirmation":
+        return web.Response(text=CONFIRMATION_CODE)
+    if body.get("secret") and body.get("secret") != SECRET_KEY:
+        return web.Response(text="ok")
     
-    # ==================== ЕСЛИ НИЧЕГО НЕ НАШЛОСЬ ====================
-    await message.answer(
-        "❌ Я не понял.\n\n"
-        "Я отвечаю только на запросы по настройкам Free Fire.\n\n"
-        "Напиши «меню» чтобы вернуться к выбору.\n"
-        "Или «корректировка» если нужно исправить настройки.",
-        keyboard=main_menu()
-    )
+    obj = body.get("object", {})
+    msg = obj.get("message", {})
+    user_id = msg.get("from_id")
+    text = msg.get("text", "")
+    
+    if user_id and text:
+        asyncio.create_task(handle_message(user_id, text))
+    
+    return web.Response(text="ok")
 
-# ============================================================
-# 🔑 АДМИН-ПАНЕЛЬ
-# ============================================================
-
-@bot.on.message(text=["/stat", "/admin"])
-async def admin_stats(message: Message):
-    total_users = len(users)
-    premium_users = sum(1 for u in users.values() if u.premium_active)
-    await message.answer(
-        f"📊 СТАТИСТИКА БОТА\n\n"
-        f"👥 Всего пользователей: {total_users}\n"
-        f"💎 Премиум пользователей: {premium_users}\n"
-        f"💰 Цена премиума: {PREMIUM_PRICE}₽\n"
-        f"🔄 Корректировок на человека: {MAX_CORRECTIONS}\n"
-        f"📅 Дней до новой настройки: {DAYS_BEFORE_NEW}\n"
-        f"🖥 Сервер: Online"
-    )
-
-# ============================================================
-# ЗАПУСК БОТА
-# ============================================================
-
-if __name__ == "__main__":
+async def main():
+    app = web.Application()
+    app.router.add_post("/callback", callback_handler)
     print("=" * 40)
     print("🎮 Free Fire Settings Bot")
+    print("📡 Callback API mode")
+    print(f"🔗 Порт: {PORT}")
     print("=" * 40)
-    print("🤖 Бот запускается...")
-    print(f"💰 Премиум: {PREMIUM_PRICE}₽")
-    print(f"🔄 Корректировок: {MAX_CORRECTIONS}")
-    print(f"📅 Повтор через: {DAYS_BEFORE_NEW} дней")
-    print(f"📱 Моделей в базе: {len(PHONES)}")
-    print("=" * 40)
-    bot.run_forever()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print("✅ Сервер запущен. Ожидание запросов...")
+    await asyncio.Event().wait()
+
+if __name__ == "__main__":
+    asyncio.run(main())
