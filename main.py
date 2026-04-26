@@ -15,20 +15,13 @@ def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
     resp = requests.post(f"https://api.vk.com/method/{method}", params=params)
-    result = resp.json()
-    print(f"🔧 VK API {method}: {json.dumps(result, ensure_ascii=False)}")
-    return result
+    return resp.json()
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
-    result = vk_api("messages.send", params)
-    if "error" in result:
-        print(f"❌ Ошибка отправки: {result['error']}")
-    else:
-        print(f"✅ Сообщение отправлено пользователю {user_id}")
-    return result
+    return vk_api("messages.send", params)
 
 def send_menu(user_id):
     send_message(user_id,
@@ -36,7 +29,6 @@ def send_menu(user_id):
         keyboard=main_menu())
 
 def handle_message(user_id, text):
-    print(f"🔄 Обработка: user={user_id}, text={text}")
     user = get_user(user_id)
     state = user_states.get(user_id, MENU)
     text_lower = text.lower().strip()
@@ -156,30 +148,21 @@ def handle_message(user_id, text):
 
 @app.route("/callback", methods=["POST"])
 def callback():
-    print("=" * 40)
-    print("📥 ПОЛУЧЕН ЗАПРОС НА /callback")
-    try:
-        body = request.get_json()
-        print(f"📦 Тело запроса: {json.dumps(body, ensure_ascii=False)}")
-        
-        if body.get("type") == "confirmation":
-            print("✅ Отправляю подтверждение: " + CONFIRMATION_CODE)
-            return CONFIRMATION_CODE
+    body = request.get_json()
+    if body.get("type") == "confirmation":
+        return CONFIRMATION_CODE
 
-        if body.get("type") == "message_new":
-            obj = body.get("object", {})
-            msg = obj.get("message", {})
-            user_id = msg.get("from_id")
-            text = msg.get("text", "")
-            print(f"💬 Сообщение от {user_id}: {text}")
-            if user_id and text:
-                handle_message(user_id, text)
+    if body.get("type") == "message_new":
+        obj = body.get("object", {})
+        msg = obj.get("message", {})
+        user_id = msg.get("from_id")
+        text = msg.get("text", "")
+        if user_id and user_id < 0:
+            user_id = abs(user_id)
+        if user_id and text:
+            handle_message(user_id, text)
 
-        return "ok"
-    except Exception as e:
-        print(f"❌ ОШИБКА: {e}")
-        print(traceback.format_exc())
-        return "ok"
+    return "ok"
 
 if __name__ == "__main__":
     print("=" * 40)
