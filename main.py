@@ -32,7 +32,7 @@ def send_menu(user_id):
             [{"action": {"type": "text", "label": "❓ Как это работает"}, "color": "secondary"}],
         ]
     }
-    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги под популярные телефоны\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽", keyboard=kb)
+    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽", keyboard=kb)
 
 @app.route("/callback", methods=["POST"])
 def callback():
@@ -69,11 +69,13 @@ def back_and_menu_kb():
         ]
     }
 
-def menu_only_kb():
+def after_config_kb():
     return {
         "one_time": False,
         "buttons": [
-            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "🔥 Хочу премиум"}, "color": "positive"}],
+            [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+             {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
         ]
     }
 
@@ -111,7 +113,7 @@ def handle_message(user_id, text):
         send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
-    if t == "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽":
+    if t == "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽" or t == "🔥 Хочу премиум":
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
@@ -144,12 +146,7 @@ def handle_message(user_id, text):
         send_message(user_id, "📱 Выбери модель (напиши номер или название):", keyboard=kb)
         return
 
-    if t == "← Назад":
-        user_states[user_id] = "MENU"
-        send_menu(user_id)
-        return
-
-    if t == "🏠 В меню":
+    if t in ["← Назад", "🏠 В меню"]:
         user_states[user_id] = "MENU"
         send_menu(user_id)
         return
@@ -162,7 +159,7 @@ def handle_message(user_id, text):
             phone = cat[num - 1]
             config = get_config(phone)
             if config:
-                send_message(user_id, config, keyboard=menu_only_kb())
+                send_message(user_id, config, keyboard=after_config_kb())
                 return
 
     # Прямой поиск
@@ -170,7 +167,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config, keyboard=menu_only_kb())
+            send_message(user_id, config, keyboard=after_config_kb())
             return
 
     # ИИ опрос
@@ -197,7 +194,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке — вот базовая настройка под твой телефон)", keyboard=menu_only_kb())
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке — вот базовая настройка под твой телефон)", keyboard=after_config_kb())
         return
 
     if "корректировка" in t.lower():
