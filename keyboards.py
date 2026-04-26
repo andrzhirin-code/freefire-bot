@@ -1,6 +1,3 @@
-# keyboards.py
-# Клавиатуры (кнопки) для бота
-
 def main_menu():
     return {
         "one_time": False,
