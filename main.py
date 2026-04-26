@@ -15,13 +15,20 @@ def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
     resp = requests.post(f"https://api.vk.com/method/{method}", params=params)
-    return resp.json()
+    result = resp.json()
+    print(f"🔧 VK API {method}: {json.dumps(result, ensure_ascii=False)}")
+    return result
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
-    return vk_api("messages.send", params)
+    result = vk_api("messages.send", params)
+    if "error" in result:
+        print(f"❌ Ошибка отправки: {result['error']}")
+    else:
+        print(f"✅ Сообщение отправлено пользователю {user_id}")
+    return result
 
 def send_menu(user_id):
     send_message(user_id,
@@ -29,7 +36,7 @@ def send_menu(user_id):
         keyboard=main_menu())
 
 def handle_message(user_id, text):
-    print(f"🔄 handle_message: user={user_id}, text={text}")
+    print(f"🔄 Обработка: user={user_id}, text={text}")
     user = get_user(user_id)
     state = user_states.get(user_id, MENU)
     text_lower = text.lower().strip()
