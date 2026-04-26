@@ -130,6 +130,13 @@ def handle_message(user_id, text):
         send_menu(user_id)
         return
 
+    after_config_kb = {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+        ]
+    }
+
     # Выбор по номеру
     if t.split(".")[0].isdigit():
         num = int(t.split(".")[0])
@@ -138,7 +145,7 @@ def handle_message(user_id, text):
             phone = cat[num - 1]
             config = get_config(phone)
             if config:
-                send_message(user_id, config)
+                send_message(user_id, config, keyboard=after_config_kb)
                 return
 
     # Прямой поиск
@@ -146,7 +153,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config)
+            send_message(user_id, config, keyboard=after_config_kb)
             return
 
     # ИИ опрос
@@ -173,7 +180,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки... (пока заглушка)")
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки... (пока заглушка)", keyboard=after_config_kb)
         return
 
     if "корректировка" in t.lower():
