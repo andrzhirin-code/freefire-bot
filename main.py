@@ -173,7 +173,15 @@ def callback():
             threading.Thread(target=handle_message, args=(user_id, text)).start()
 
     return "ok"
-
+    
+@app.route("/log")
+def show_log():
+    try:
+        with open("/tmp/bot.log", "r") as f:
+            return f.read().replace("\n", "<br>")
+    except:
+        return "Лог пуст"
+        
 if __name__ == "__main__":
     print("=" * 40)
     print("🎮 Free Fire Settings Bot")
