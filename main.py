@@ -1,5 +1,5 @@
 import json
-import traceback
+import threading
 from flask import Flask, request
 import requests
 from config import *
@@ -15,7 +15,10 @@ def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
     resp = requests.post(f"https://api.vk.com/method/{method}", params=params)
-    return resp.json()
+    result = resp.json()
+    with open("/tmp/bot.log", "a") as f:
+        f.write(f"VK API {method}: {json.dumps(result)}\n")
+    return result
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
@@ -29,6 +32,9 @@ def send_menu(user_id):
         keyboard=main_menu())
 
 def handle_message(user_id, text):
+    with open("/tmp/bot.log", "a") as f:
+        f.write(f"HANDLE: user={user_id} text={text}\n")
+    
     user = get_user(user_id)
     state = user_states.get(user_id, MENU)
     text_lower = text.lower().strip()
@@ -149,6 +155,10 @@ def handle_message(user_id, text):
 @app.route("/callback", methods=["POST"])
 def callback():
     body = request.get_json()
+
+    with open("/tmp/bot.log", "a") as f:
+        f.write(f"📥 {body.get('type')}: {json.dumps(body)}\n")
+
     if body.get("type") == "confirmation":
         return CONFIRMATION_CODE
 
@@ -160,7 +170,7 @@ def callback():
         if user_id and user_id < 0:
             user_id = abs(user_id)
         if user_id and text:
-            handle_message(user_id, text)
+            threading.Thread(target=handle_message, args=(user_id, text)).start()
 
     return "ok"
 
