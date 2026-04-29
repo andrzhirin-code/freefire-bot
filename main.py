@@ -25,12 +25,10 @@ def vk_api(method, params):
         log(f"❌ VK API {method}: {result['error']['error_msg']}")
     return result
 
-def send_message(user_id, text, keyboard=None, attachment=None):
+def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
-    if attachment:
-        params["attachment"] = attachment
     return vk_api("messages.send", params)
 
 def send_menu(user_id):
@@ -82,23 +80,13 @@ def back_and_menu_kb():
         ]
     }
 
-def premium_template():
-    """Кнопка прямо в сообщении (как у конкурентов)"""
-    return json.dumps([{
-        "type": "template",
-        "elements": [
-            {
-                "type": "button",
-                "buttons": [
-                    {
-                        "type": "callback",
-                        "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽",
-                        "payload": json.dumps({"cmd": "premium"})
-                    }
-                ]
-            }
+def premium_kb():
+    return {
+        "one_time": True,
+        "buttons": [
+            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}]
         ]
-    }])
+    }
 
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
@@ -172,7 +160,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config + "\n\n👇 Жми кнопку ниже:", attachment=premium_template())
+            send_message(user_id, config + "\n\n🔥 Нужна ИИ-настройка? Жми кнопку:", keyboard=premium_kb())
             return
 
     # ИИ опрос
