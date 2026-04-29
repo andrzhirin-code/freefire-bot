@@ -11,11 +11,18 @@ app = Flask(__name__)
 user_states = {}
 last_category = {}
 
+def log(msg):
+    with open("/tmp/bot.log", "a") as f:
+        f.write(f"[{__import__('datetime').datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+
 def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
     resp = requests.post(f"https://api.vk.com/method/{method}", params=params)
-    return resp.json()
+    result = resp.json()
+    if "error" in result:
+        log(f"❌ VK API {method}: {result['error']['error_msg']}")
+    return result
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
@@ -29,18 +36,19 @@ def send_menu(user_id):
         "buttons": [
             [{"action": {"type": "text", "label": "📱 Бесплатные настройки"}, "color": "primary"}],
             [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
-            [{"action": {"type": "text", "label": "❓ Как это работает"}, "color": "secondary"}],
+            [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}, "color": "positive"}],
         ]
     }
-    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽", keyboard=kb)
+    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽\n🛒 Магазин — зайди посмотри", keyboard=kb)
 
 @app.route("/callback", methods=["POST"])
 def callback():
     body = request.get_json()
-    with open("/tmp/bot.log", "a") as f:
-        f.write(f"📥 {body.get('type')}\n")
+    log(f"📥 {body.get('type')}")
+
     if body.get("type") == "confirmation":
         return CONFIRMATION_CODE
+
     if body.get("type") == "message_new":
         obj = body.get("object", {})
         msg = obj.get("message", {})
@@ -80,8 +88,7 @@ def after_config_kb():
     }
 
 def handle_message(user_id, text):
-    with open("/tmp/bot.log", "a") as f:
-        f.write(f"HANDLE: {text}\n")
+    log(f"💬 user={user_id} text={text}")
 
     user = get_user(user_id)
     state = user_states.get(user_id, "MENU")
@@ -90,10 +97,6 @@ def handle_message(user_id, text):
     if t.lower() in ["меню", "начать", "старт", "start"]:
         user_states[user_id] = "MENU"
         send_menu(user_id)
-        return
-
-    if t in ["❓ Как это работает", "помощь", "help"]:
-        send_message(user_id, "🤖 Бот для настроек Free Fire\n\n📱 Бесплатно — шаблоны\n🔥 Премиум 99₽ — ИИ подбирает лично\n🔄 Корректировка — 2 шт после премиума", keyboard=back_and_menu_kb())
         return
 
     if t == "📱 Бесплатные настройки":
@@ -113,7 +116,7 @@ def handle_message(user_id, text):
         send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
-    if t == "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽" or t == "🔥 Хочу премиум":
+    if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
@@ -194,7 +197,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке — вот базовая настройка под твой телефон)", keyboard=after_config_kb())
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=after_config_kb())
         return
 
     if "корректировка" in t.lower():
