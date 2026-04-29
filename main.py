@@ -17,7 +17,7 @@ def log(msg):
         f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
 
 def vk_api(method, params):
-    params["v"] = "5.199"
+    params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
     resp = requests.post(f"https://api.vk.com/method/{method}", params=params)
     result = resp.json()
