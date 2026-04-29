@@ -61,20 +61,6 @@ def callback():
             threading.Thread(target=handle_message, args=(user_id, text)).start()
         return Response('{"response":1}', content_type="application/json")
 
-    if body.get("type") == "message_event":
-        obj = body.get("object", {})
-        user_id = obj.get("user_id")
-        payload = obj.get("payload", {})
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        cmd = payload.get("cmd", "")
-        log(f"🖲 message_event: user={user_id} cmd={cmd}")
-        if cmd == "premium":
-            def process():
-                handle_message(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")
-            threading.Thread(target=process).start()
-        return Response('{"response":1}', content_type="application/json")
-
     return Response('{"response":1}', content_type="application/json")
 
 @app.route("/log")
@@ -94,11 +80,11 @@ def back_and_menu_kb():
         ]
     }
 
-def premium_inline_kb():
+def after_config_kb():
     return {
-        "inline": True,
+        "one_time": False,
         "buttons": [
-            [{"action": {"type": "callback", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
+            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
         ]
     }
 
@@ -174,7 +160,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config, keyboard=premium_inline_kb())
+            send_message(user_id, config, keyboard=after_config_kb())
             return
 
     # ИИ опрос
@@ -201,7 +187,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=premium_inline_kb())
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=after_config_kb())
         return
 
     if "корректировка" in t.lower():
