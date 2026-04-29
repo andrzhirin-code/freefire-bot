@@ -47,14 +47,8 @@ def callback():
     body = request.get_json()
     log(f"📥 {body.get('type')}")
 
-    # Подтверждение приходит без secret
     if body.get("type") == "confirmation":
         return Response(CONFIRMATION_CODE, content_type="text/plain")
-
-    # Проверка секретного ключа только для message_event
-    if body.get("type") not in ["confirmation", "message_new"]:
-        if body.get("secret") != SECRET_KEY:
-            return Response("invalid secret", content_type="text/plain")
 
     if body.get("type") == "message_new":
         obj = body.get("object", {})
@@ -65,7 +59,7 @@ def callback():
             user_id = abs(user_id)
         if user_id and text:
             threading.Thread(target=handle_message, args=(user_id, text)).start()
-        return Response("ok", content_type="text/plain")
+        return Response('{"response":1}', content_type="application/json")
 
     if body.get("type") == "message_event":
         obj = body.get("object", {})
@@ -79,9 +73,9 @@ def callback():
             def process():
                 handle_message(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")
             threading.Thread(target=process).start()
-        return Response("ok", content_type="text/plain")
+        return Response('{"response":1}', content_type="application/json")
 
-    return Response("ok", content_type="text/plain")
+    return Response('{"response":1}', content_type="application/json")
 
 @app.route("/log")
 def show_log():
