@@ -40,8 +40,8 @@ def send_menu(user_id):
             [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}}],
         ]
     }
-    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽\n🛒 Магазин — зайди посмотри", keyboard=kb)
-
+    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽\n🛒 Магазин — перейти в магазин", keyboard=kb)
+    
 @app.route("/callback", methods=["POST"])
 def callback():
     body = request.get_json()
