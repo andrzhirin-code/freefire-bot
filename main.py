@@ -25,10 +25,12 @@ def vk_api(method, params):
         log(f"❌ VK API {method}: {result['error']['error_msg']}")
     return result
 
-def send_message(user_id, text, keyboard=None):
+def send_message(user_id, text, keyboard=None, attachment=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
+    if attachment:
+        params["attachment"] = attachment
     return vk_api("messages.send", params)
 
 def send_menu(user_id):
@@ -61,24 +63,6 @@ def callback():
             threading.Thread(target=handle_message, args=(user_id, text)).start()
         return "ok"
 
-    # Обработка inline-кнопок (callback)
-    if body.get("type") == "message_event":
-        obj = body.get("object", {})
-        user_id = obj.get("user_id")
-        payload = obj.get("payload", {})
-        if isinstance(payload, str):
-            payload = json.loads(payload)
-        cmd = payload.get("cmd", "")
-        if cmd == "premium":
-            threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
-        # Ответить на callback обязательно
-        vk_api("messages.sendMessageEventAnswer", {
-            "event_id": body.get("event_id"),
-            "user_id": user_id,
-            "peer_id": obj.get("peer_id"),
-        })
-        return "ok"
-
     return "ok"
 
 @app.route("/log")
@@ -98,13 +82,23 @@ def back_and_menu_kb():
         ]
     }
 
-def premium_inline_kb():
-    return {
-        "inline": True,
-        "buttons": [
-            [{"action": {"type": "callback", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
+def premium_template():
+    """Кнопка прямо в сообщении (как у конкурентов)"""
+    return json.dumps([{
+        "type": "template",
+        "elements": [
+            {
+                "type": "button",
+                "buttons": [
+                    {
+                        "type": "callback",
+                        "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽",
+                        "payload": json.dumps({"cmd": "premium"})
+                    }
+                ]
+            }
         ]
-    }
+    }])
 
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
@@ -178,7 +172,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config, keyboard=premium_inline_kb())
+            send_message(user_id, config + "\n\n👇 Жми кнопку ниже:", attachment=premium_template())
             return
 
     # ИИ опрос
@@ -205,7 +199,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=premium_inline_kb())
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)")
         return
 
     if "корректировка" in t.lower():
