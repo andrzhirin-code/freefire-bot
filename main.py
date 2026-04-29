@@ -1,7 +1,7 @@
 import json
 import threading
 from datetime import datetime
-from flask import Flask, request, Response
+from flask import Flask, request
 import requests
 from config import *
 from states import *
@@ -48,7 +48,7 @@ def callback():
     log(f"📥 {body.get('type')}")
 
     if body.get("type") == "confirmation":
-        return Response(CONFIRMATION_CODE, content_type="text/plain")
+        return CONFIRMATION_CODE
 
     if body.get("type") == "message_new":
         obj = body.get("object", {})
@@ -59,9 +59,27 @@ def callback():
             user_id = abs(user_id)
         if user_id and text:
             threading.Thread(target=handle_message, args=(user_id, text)).start()
-        return Response('{"response":1}', content_type="application/json")
+        return "ok"
 
-    return Response('{"response":1}', content_type="application/json")
+    # Обработка inline-кнопок (callback)
+    if body.get("type") == "message_event":
+        obj = body.get("object", {})
+        user_id = obj.get("user_id")
+        payload = obj.get("payload", {})
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        cmd = payload.get("cmd", "")
+        if cmd == "premium":
+            threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
+        # Ответить на callback обязательно
+        vk_api("messages.sendMessageEventAnswer", {
+            "event_id": body.get("event_id"),
+            "user_id": user_id,
+            "peer_id": obj.get("peer_id"),
+        })
+        return "ok"
+
+    return "ok"
 
 @app.route("/log")
 def show_log():
@@ -80,11 +98,11 @@ def back_and_menu_kb():
         ]
     }
 
-def after_config_kb():
+def premium_inline_kb():
     return {
-        "one_time": False,
+        "inline": True,
         "buttons": [
-            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
+            [{"action": {"type": "callback", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
         ]
     }
 
@@ -160,7 +178,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config, keyboard=after_config_kb())
+            send_message(user_id, config, keyboard=premium_inline_kb())
             return
 
     # ИИ опрос
@@ -187,7 +205,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=after_config_kb())
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=premium_inline_kb())
         return
 
     if "корректировка" in t.lower():
