@@ -51,9 +51,10 @@ def callback():
     if body.get("type") == "confirmation":
         return Response(CONFIRMATION_CODE, content_type="text/plain")
 
-    # Проверка секретного ключа для всех остальных событий
-    if body.get("secret") != SECRET_KEY:
-        return Response("invalid secret", content_type="text/plain")
+    # Проверка секретного ключа только для message_event
+    if body.get("type") not in ["confirmation", "message_new"]:
+        if body.get("secret") != SECRET_KEY:
+            return Response("invalid secret", content_type="text/plain")
 
     if body.get("type") == "message_new":
         obj = body.get("object", {})
