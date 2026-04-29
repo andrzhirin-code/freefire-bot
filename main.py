@@ -19,6 +19,7 @@ longpoll_ts = None
 
 POINTS_FILE = "/tmp/points.json"
 POINTS_BACKUP = "/tmp/points_backup.json"
+POSTS_FILE = "/tmp/fresh_posts.json"
 
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
@@ -26,30 +27,39 @@ POINTS_PREMIUM = 400
 POINTS_EXPIRE_DAYS = 30
 POST_MAX_AGE_DAYS = 5
 
-# Список свежих постов
-fresh_posts = set()
+# Хранилище постов
+fresh_posts = {}
 fresh_posts_lock = threading.Lock()
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
         f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
 
-def load_points():
-    if os.path.exists(POINTS_FILE):
+def load_json(path, default):
+    if os.path.exists(path):
         try:
-            with open(POINTS_FILE, "r") as f:
+            with open(path, "r") as f:
                 return json.load(f)
         except:
-            if os.path.exists(POINTS_BACKUP):
-                with open(POINTS_BACKUP, "r") as f:
-                    return json.load(f)
-    return {}
+            pass
+    return default
+
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+def load_points():
+    return load_json(POINTS_FILE, {})
 
 def save_points(data):
-    with open(POINTS_FILE, "w") as f:
-        json.dump(data, f)
-    with open(POINTS_BACKUP, "w") as f:
-        json.dump(data, f)
+    save_json(POINTS_FILE, data)
+    save_json(POINTS_BACKUP, data)
+
+def load_posts():
+    return load_json(POSTS_FILE, {})
+
+def save_posts(data):
+    save_json(POSTS_FILE, data)
 
 def get_user_points(uid):
     data = load_points()
@@ -61,10 +71,10 @@ def get_user_points(uid):
 
 def add_points(uid, amount):
     data, key = get_user_points(uid)
-    data[key]["points"] += amount
+    data[key]["points"] = max(0, data[key]["points"] + amount)
     data[key]["last_active"] = datetime.now().isoformat()
     save_points(data)
-    log(f"⭐ +{amount} баллов пользователю {uid} (всего: {data[key]['points']})")
+    log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']})")
 
 def check_points_expiry(uid):
     data, key = get_user_points(uid)
@@ -147,7 +157,7 @@ def handle_message(user_id, text):
             ]
         }
         if expired:
-            send_message(user_id, f"⌛ Баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно ещё: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
+            send_message(user_id, f"⌛ Баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
         else:
             send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно для премиума: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
         return
@@ -272,32 +282,29 @@ def get_longpoll_server():
         longpoll_ts = resp["response"]["ts"]
         log(f"🔗 LongPoll подключён")
 
-def update_fresh_posts():
-    """Обновляет список свежих постов (не старше POST_MAX_AGE_DAYS дней)"""
+def load_fresh_posts():
     global fresh_posts
-    try:
-        resp = vk_api("wall.get", {"owner_id": -GROUP_ID, "count": 20})
-        if "response" in resp:
-            items = resp["response"].get("items", [])
-            new_fresh = set()
-            for item in items:
-                post_date = item.get("date", 0)
-                age = time.time() - post_date
-                if age < POST_MAX_AGE_DAYS * 86400:
-                    new_fresh.add(item["id"])
-            with fresh_posts_lock:
-                fresh_posts = new_fresh
-            log(f"📝 Обновлён список свежих постов: {len(fresh_posts)} шт.")
-    except Exception as e:
-        log(f"⏳ Ошибка обновления постов: {e}")
+    fresh_posts = load_posts()
+    now = time.time()
+    for pid in list(fresh_posts.keys()):
+        if now - fresh_posts[pid] > POST_MAX_AGE_DAYS * 86400:
+            del fresh_posts[pid]
+    save_posts(fresh_posts)
+    log(f"📝 Загружено свежих постов: {len(fresh_posts)}")
 
 def add_fresh_post(post_id):
     with fresh_posts_lock:
-        fresh_posts.add(post_id)
+        fresh_posts[post_id] = time.time()
+        save_posts(fresh_posts)
 
 def is_post_fresh(post_id):
     with fresh_posts_lock:
-        return post_id in fresh_posts
+        if post_id in fresh_posts:
+            if time.time() - fresh_posts[post_id] < POST_MAX_AGE_DAYS * 86400:
+                return True
+            del fresh_posts[post_id]
+            save_posts(fresh_posts)
+    return False
 
 def longpoll_loop():
     global longpoll_ts
@@ -341,6 +348,7 @@ def longpoll_loop():
                     post_id = update["object"].get("id", 0)
                     if post_id:
                         add_fresh_post(post_id)
+                        log(f"📝 Новый пост #{post_id} добавлен в свежие")
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     post_id = update["object"].get("post_id", 0)
@@ -377,12 +385,6 @@ def longpoll_loop():
             log(f"⏳ LongPoll: {e}")
             time.sleep(3)
 
-def posts_updater():
-    """Обновляет список свежих постов каждый час"""
-    while True:
-        update_fresh_posts()
-        time.sleep(3600)
-
 @app.route("/")
 def home():
     return "Bot is running"
@@ -397,8 +399,7 @@ def show_log():
 
 if __name__ == "__main__":
     log("🤖 Бот запускается (LongPoll + Баллы)...")
+    load_fresh_posts()
     get_longpoll_server()
-    update_fresh_posts()  # Первое обновление при запуске
     threading.Thread(target=longpoll_loop, daemon=True).start()
-    threading.Thread(target=posts_updater, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
