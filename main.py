@@ -95,7 +95,7 @@ def handle_message(user_id, text):
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
-        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.", keyboard=back_and_menu_kb())
+        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -139,27 +139,27 @@ def handle_message(user_id, text):
     if state == "AI_ASK_PHONE":
         user.phone = t
         user_states[user_id] = "AI_ASK_RAM"
-        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?", keyboard=back_and_menu_kb())
+        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
         user.ram = t
         user_states[user_id] = "AI_ASK_STYLE"
-        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
         user.style = t
         user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 5:\nОружие?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔫 Вопрос 4 из 5:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t
         user_states[user_id] = "AI_ASK_FINGERS"
-        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...")
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)")
         return
 
     if "корректировка" in t.lower():
@@ -205,11 +205,18 @@ def longpoll_loop():
                 elif update["type"] == "message_event":
                     obj = update["object"]
                     user_id = obj.get("user_id")
+                    event_id = obj.get("event_id")
+                    peer_id = obj.get("peer_id")
                     payload = obj.get("payload", {})
                     if isinstance(payload, str):
                         payload = json.loads(payload)
                     cmd = payload.get("cmd", "")
                     log(f"🖲 message_event: user={user_id} cmd={cmd}")
+                    vk_api("messages.sendMessageEventAnswer", {
+                        "event_id": event_id,
+                        "user_id": user_id,
+                        "peer_id": peer_id,
+                    })
                     if cmd == "premium":
                         threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
         except Exception as e:
@@ -219,6 +226,14 @@ def longpoll_loop():
 @app.route("/")
 def home():
     return "Bot is running"
+
+@app.route("/log")
+def show_log():
+    try:
+        with open("/tmp/bot.log", "r") as f:
+            return "<pre>" + f.read() + "</pre>"
+    except:
+        return "empty"
 
 if __name__ == "__main__":
     log("🤖 Бот запускается (LongPoll)...")
