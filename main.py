@@ -25,10 +25,12 @@ def vk_api(method, params):
         log(f"❌ VK API {method}: {result['error']['error_msg']}")
     return result
 
-def send_message(user_id, text, keyboard=None):
+def send_message(user_id, text, keyboard=None, attachment=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
+    if attachment:
+        params["attachment"] = attachment
     return vk_api("messages.send", params)
 
 def send_menu(user_id):
@@ -78,13 +80,23 @@ def back_and_menu_kb():
         ]
     }
 
-def after_config_kb():
-    return {
-        "one_time": False,
-        "buttons": [
-            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
+def premium_inline_btn(user_id):
+    """Inline-кнопка прямо в сообщении"""
+    return json.dumps([{
+        "type": "template",
+        "elements": [
+            {
+                "type": "button",
+                "buttons": [
+                    {
+                        "type": "callback",
+                        "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽",
+                        "payload": json.dumps({"cmd": "premium", "user_id": user_id})
+                    }
+                ]
+            }
         ]
-    }
+    }])
 
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
@@ -158,7 +170,7 @@ def handle_message(user_id, text):
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config, keyboard=after_config_kb())
+            send_message(user_id, config, attachment=premium_inline_btn(user_id))
             return
 
     # ИИ опрос
@@ -185,7 +197,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", keyboard=after_config_kb())
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)", attachment=premium_inline_btn(user_id))
         return
 
     if "корректировка" in t.lower():
