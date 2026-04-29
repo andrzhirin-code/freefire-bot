@@ -261,9 +261,9 @@ def get_longpoll_server():
 
 def is_post_fresh(post_id):
     try:
-        resp = vk_api("wall.getById", {"posts": f"-{GROUP_ID}_{post_id}"})
-        if "response" in resp and resp["response"]:
-            post_date = resp["response"][0].get("date", 0)
+        resp = vk_api("wall.get", {"owner_id": -GROUP_ID, "posts": f"-{GROUP_ID}_{post_id}"})
+        if "response" in resp and resp["response"].get("items"):
+            post_date = resp["response"]["items"][0].get("date", 0)
             age = time.time() - post_date
             return age < POST_MAX_AGE_DAYS * 86400
     except:
