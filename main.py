@@ -1,16 +1,18 @@
 import json
 import threading
 from datetime import datetime
-from flask import Flask, request
 import requests
+import time
 from config import *
 from states import *
 from database import get_user
 from phones_db import *
 
-app = Flask(__name__)
 user_states = {}
 last_category = {}
+longpoll_server = None
+longpoll_key = None
+longpoll_ts = None
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
@@ -42,35 +44,6 @@ def send_menu(user_id):
     }
     send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽\n🛒 Магазин — перейти в магазин", keyboard=kb)
 
-@app.route("/callback", methods=["POST"])
-def callback():
-    body = request.get_json()
-    log(f"📥 {body.get('type')}")
-
-    if body.get("type") == "confirmation":
-        return CONFIRMATION_CODE
-
-    if body.get("type") == "message_new":
-        obj = body.get("object", {})
-        msg = obj.get("message", {})
-        user_id = msg.get("from_id")
-        text = msg.get("text", "")
-        if user_id and user_id < 0:
-            user_id = abs(user_id)
-        if user_id and text:
-            threading.Thread(target=handle_message, args=(user_id, text)).start()
-        return "ok"
-
-    return "ok"
-
-@app.route("/log")
-def show_log():
-    try:
-        with open("/tmp/bot.log", "r") as f:
-            return "<pre>" + f.read() + "</pre>"
-    except:
-        return "empty"
-
 def back_and_menu_kb():
     return {
         "one_time": False,
@@ -80,11 +53,11 @@ def back_and_menu_kb():
         ]
     }
 
-def premium_kb():
+def premium_inline_kb():
     return {
-        "one_time": True,
+        "inline": True,
         "buttons": [
-            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}]
+            [{"action": {"type": "callback", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
         ]
     }
 
@@ -155,39 +128,37 @@ def handle_message(user_id, text):
         send_menu(user_id)
         return
 
-    # Прямой поиск
     phone = find_phone(t)
     if phone:
         config = get_config(phone)
         if config:
-            send_message(user_id, config + "\n\n🔥 Нужна ИИ-настройка? Жми кнопку:", keyboard=premium_kb())
+            send_message(user_id, config, keyboard=premium_inline_kb())
             return
 
-    # ИИ опрос
     if state == "AI_ASK_PHONE":
         user.phone = t
         user_states[user_id] = "AI_ASK_RAM"
-        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
+        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
         user.ram = t
         user_states[user_id] = "AI_ASK_STYLE"
-        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
+        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
         user.style = t
         user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 5:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔫 Вопрос 4 из 5:\nОружие?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t
         user_states[user_id] = "AI_ASK_FINGERS"
-        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
+        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)")
+        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...")
         return
 
     if "корректировка" in t.lower():
@@ -200,5 +171,59 @@ def handle_message(user_id, text):
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
 
+def get_longpoll_server():
+    global longpoll_server, longpoll_key, longpoll_ts
+    resp = vk_api("groups.getLongPollServer", {"group_id": GROUP_ID})
+    if "response" in resp:
+        longpoll_server = resp["response"]["server"]
+        longpoll_key = resp["response"]["key"]
+        longpoll_ts = resp["response"]["ts"]
+        log(f"🔗 LongPoll подключён: {longpoll_server}")
+
+def longpoll_loop():
+    global longpoll_ts
+    while True:
+        try:
+            if not longpoll_server:
+                get_longpoll_server()
+            url = f"{longpoll_server}?act=a_check&key={longpoll_key}&ts={longpoll_ts}&wait=25"
+            resp = requests.get(url, timeout=30).json()
+            if "failed" in resp:
+                log(f"🔄 LongPoll переподключение: {resp['failed']}")
+                get_longpoll_server()
+                continue
+            longpoll_ts = resp.get("ts", longpoll_ts)
+            for update in resp.get("updates", []):
+                if update["type"] == "message_new":
+                    msg = update["object"]["message"]
+                    user_id = msg.get("from_id")
+                    text = msg.get("text", "")
+                    if user_id and user_id < 0:
+                        user_id = abs(user_id)
+                    if user_id and text:
+                        threading.Thread(target=handle_message, args=(user_id, text)).start()
+                elif update["type"] == "message_event":
+                    obj = update["object"]
+                    user_id = obj.get("user_id")
+                    payload = obj.get("payload", {})
+                    if isinstance(payload, str):
+                        payload = json.loads(payload)
+                    cmd = payload.get("cmd", "")
+                    log(f"🖲 message_event: user={user_id} cmd={cmd}")
+                    if cmd == "premium":
+                        threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
+        except Exception as e:
+            log(f"⏳ Ошибка LongPoll: {e}")
+            time.sleep(3)
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+    print("=" * 40)
+    print("🎮 Free Fire Settings Bot")
+    print("📡 LongPoll API mode")
+    print("=" * 40)
+    log("🤖 Бот запускается (LongPoll)...")
+    get_longpoll_server()
+    threading.Thread(target=longpoll_loop, daemon=True).start()
+    # Держим главный поток
+    while True:
+        time.sleep(60)
