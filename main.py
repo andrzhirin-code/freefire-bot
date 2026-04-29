@@ -41,7 +41,7 @@ def send_menu(user_id):
         ]
     }
     send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽\n🛒 Магазин — перейти в магазин", keyboard=kb)
-    
+
 @app.route("/callback", methods=["POST"])
 def callback():
     body = request.get_json()
@@ -82,9 +82,7 @@ def after_config_kb():
     return {
         "one_time": False,
         "buttons": [
-            [{"action": {"type": "text", "label": "🔥 Хочу премиум"}, "color": "positive"}],
-            [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-             {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
         ]
     }
 
@@ -138,8 +136,8 @@ def handle_message(user_id, text):
         last_category[user_id] = phones
         kb = {"one_time": False, "buttons": []}
         row = []
-        for i, phone in enumerate(phones, 1):
-            row.append({"action": {"type": "text", "label": f"{i}. {phone.title()}"}, "color": "primary"})
+        for phone in phones:
+            row.append({"action": {"type": "text", "label": phone.title()}, "color": "primary"})
             if len(row) == 2:
                 kb["buttons"].append(row)
                 row = []
@@ -147,24 +145,13 @@ def handle_message(user_id, text):
             kb["buttons"].append(row)
         kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
                               {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери модель (напиши номер или название):", keyboard=kb)
+        send_message(user_id, "📱 Выбери модель:", keyboard=kb)
         return
 
     if t in ["← Назад", "🏠 В меню"]:
         user_states[user_id] = "MENU"
         send_menu(user_id)
         return
-
-    # Выбор по номеру
-    if t.split(".")[0].isdigit():
-        num = int(t.split(".")[0])
-        cat = last_category.get(user_id, [])
-        if 1 <= num <= len(cat):
-            phone = cat[num - 1]
-            config = get_config(phone)
-            if config:
-                send_message(user_id, config, keyboard=after_config_kb())
-                return
 
     # Прямой поиск
     phone = find_phone(t)
