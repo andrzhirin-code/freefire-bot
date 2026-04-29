@@ -3,11 +3,13 @@ import threading
 from datetime import datetime
 import requests
 import time
+from flask import Flask
 from config import *
 from states import *
 from database import get_user
 from phones_db import *
 
+app = Flask(__name__)
 user_states = {}
 last_category = {}
 longpoll_server = None
@@ -63,7 +65,6 @@ def premium_inline_kb():
 
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
-
     user = get_user(user_id)
     state = user_states.get(user_id, "MENU")
     t = text.strip()
@@ -94,7 +95,7 @@ def handle_message(user_id, text):
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
-        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
+        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -178,7 +179,7 @@ def get_longpoll_server():
         longpoll_server = resp["response"]["server"]
         longpoll_key = resp["response"]["key"]
         longpoll_ts = resp["response"]["ts"]
-        log(f"🔗 LongPoll подключён: {longpoll_server}")
+        log(f"🔗 LongPoll подключён")
 
 def longpoll_loop():
     global longpoll_ts
@@ -189,7 +190,6 @@ def longpoll_loop():
             url = f"{longpoll_server}?act=a_check&key={longpoll_key}&ts={longpoll_ts}&wait=25"
             resp = requests.get(url, timeout=30).json()
             if "failed" in resp:
-                log(f"🔄 LongPoll переподключение: {resp['failed']}")
                 get_longpoll_server()
                 continue
             longpoll_ts = resp.get("ts", longpoll_ts)
@@ -213,17 +213,15 @@ def longpoll_loop():
                     if cmd == "premium":
                         threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
         except Exception as e:
-            log(f"⏳ Ошибка LongPoll: {e}")
+            log(f"⏳ LongPoll: {e}")
             time.sleep(3)
 
+@app.route("/")
+def home():
+    return "Bot is running"
+
 if __name__ == "__main__":
-    print("=" * 40)
-    print("🎮 Free Fire Settings Bot")
-    print("📡 LongPoll API mode")
-    print("=" * 40)
     log("🤖 Бот запускается (LongPoll)...")
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
-    # Держим главный поток
-    while True:
-        time.sleep(60)
+    app.run(host="0.0.0.0", port=PORT)
