@@ -20,12 +20,15 @@ longpoll_ts = None
 POINTS_FILE = "/tmp/points.json"
 POINTS_BACKUP = "/tmp/points_backup.json"
 
-# Баллы за действия
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
 POINTS_PREMIUM = 400
 POINTS_EXPIRE_DAYS = 30
 POST_MAX_AGE_DAYS = 5
+
+# Список свежих постов
+fresh_posts = set()
+fresh_posts_lock = threading.Lock()
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
@@ -134,10 +137,19 @@ def handle_message(user_id, text):
         expired = check_points_expiry(user_id)
         data, key = get_user_points(user_id)
         pts = data[key]["points"]
+        need = max(0, POINTS_PREMIUM - pts)
+        kb = {
+            "one_time": False,
+            "buttons": [
+                [{"action": {"type": "text", "label": "🔥 Обменять баллы"}, "color": "positive"}],
+                [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+                 {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+            ]
+        }
         if expired:
-            send_message(user_id, f"⌛ Твои баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 {POINTS_PREMIUM} баллов = премиум\n\nАктивничай: лайки +{POINTS_LIKE}, комменты +{POINTS_COMMENT}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"⌛ Баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно ещё: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
         else:
-            send_message(user_id, f"⭐ Твои баллы: {pts}\n\n🔥 {POINTS_PREMIUM} баллов = премиум\n\nАктивничай: лайки +{POINTS_LIKE}, комменты +{POINTS_COMMENT}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно для премиума: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
         return
 
     if t == "📱 Бесплатные настройки":
@@ -169,7 +181,8 @@ def handle_message(user_id, text):
             user_states[user_id] = "AI_ASK_PHONE"
             send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data[key]['points']}\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
         else:
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\n\nЗарабатывай: лайки +{POINTS_LIKE}, комменты +{POINTS_COMMENT}", keyboard=back_and_menu_kb())
+            need = POINTS_PREMIUM - pts
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -245,7 +258,7 @@ def handle_message(user_id, text):
         total_users = len(data)
         top = sorted(data.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
         top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
-        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей с баллами: {total_users}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
+        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total_users}\n📱 Моделей: {len(PHONES)}\n📝 Свежих постов: {len(fresh_posts)}\n\n🏆 Топ-10:\n{top_str}")
         return
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
@@ -259,16 +272,32 @@ def get_longpoll_server():
         longpoll_ts = resp["response"]["ts"]
         log(f"🔗 LongPoll подключён")
 
-def is_post_fresh(post_id):
+def update_fresh_posts():
+    """Обновляет список свежих постов (не старше POST_MAX_AGE_DAYS дней)"""
+    global fresh_posts
     try:
-        resp = vk_api("wall.get", {"owner_id": -GROUP_ID, "posts": f"-{GROUP_ID}_{post_id}"})
-        if "response" in resp and resp["response"].get("items"):
-            post_date = resp["response"]["items"][0].get("date", 0)
-            age = time.time() - post_date
-            return age < POST_MAX_AGE_DAYS * 86400
-    except:
-        pass
-    return False
+        resp = vk_api("wall.get", {"owner_id": -GROUP_ID, "count": 20})
+        if "response" in resp:
+            items = resp["response"].get("items", [])
+            new_fresh = set()
+            for item in items:
+                post_date = item.get("date", 0)
+                age = time.time() - post_date
+                if age < POST_MAX_AGE_DAYS * 86400:
+                    new_fresh.add(item["id"])
+            with fresh_posts_lock:
+                fresh_posts = new_fresh
+            log(f"📝 Обновлён список свежих постов: {len(fresh_posts)} шт.")
+    except Exception as e:
+        log(f"⏳ Ошибка обновления постов: {e}")
+
+def add_fresh_post(post_id):
+    with fresh_posts_lock:
+        fresh_posts.add(post_id)
+
+def is_post_fresh(post_id):
+    with fresh_posts_lock:
+        return post_id in fresh_posts
 
 def longpoll_loop():
     global longpoll_ts
@@ -308,6 +337,10 @@ def longpoll_loop():
                     })
                     if cmd == "premium":
                         threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
+                elif update["type"] == "wall_post_new":
+                    post_id = update["object"].get("id", 0)
+                    if post_id:
+                        add_fresh_post(post_id)
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     post_id = update["object"].get("post_id", 0)
@@ -344,6 +377,12 @@ def longpoll_loop():
             log(f"⏳ LongPoll: {e}")
             time.sleep(3)
 
+def posts_updater():
+    """Обновляет список свежих постов каждый час"""
+    while True:
+        update_fresh_posts()
+        time.sleep(3600)
+
 @app.route("/")
 def home():
     return "Bot is running"
@@ -359,5 +398,7 @@ def show_log():
 if __name__ == "__main__":
     log("🤖 Бот запускается (LongPoll + Баллы)...")
     get_longpoll_server()
+    update_fresh_posts()  # Первое обновление при запуске
     threading.Thread(target=longpoll_loop, daemon=True).start()
+    threading.Thread(target=posts_updater, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
