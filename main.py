@@ -1,5 +1,6 @@
 import json
 import threading
+from datetime import datetime
 from flask import Flask, request
 import requests
 from config import *
@@ -13,7 +14,7 @@ last_category = {}
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
-        f.write(f"[{__import__('datetime').datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+        f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
 
 def vk_api(method, params):
     params["v"] = "5.131"
@@ -36,7 +37,7 @@ def send_menu(user_id):
         "buttons": [
             [{"action": {"type": "text", "label": "📱 Бесплатные настройки"}, "color": "primary"}],
             [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
-            [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}, "color": "positive"}],
+            [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}}],
         ]
     }
     send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя за 99₽\n🛒 Магазин — зайди посмотри", keyboard=kb)
