@@ -47,8 +47,13 @@ def callback():
     body = request.get_json()
     log(f"📥 {body.get('type')}")
 
+    # Подтверждение приходит без secret
     if body.get("type") == "confirmation":
         return Response(CONFIRMATION_CODE, content_type="text/plain")
+
+    # Проверка секретного ключа для всех остальных событий
+    if body.get("secret") != SECRET_KEY:
+        return Response("invalid secret", content_type="text/plain")
 
     if body.get("type") == "message_new":
         obj = body.get("object", {})
@@ -68,8 +73,8 @@ def callback():
         if isinstance(payload, str):
             payload = json.loads(payload)
         cmd = payload.get("cmd", "")
+        log(f"🖲 message_event: user={user_id} cmd={cmd}")
         if cmd == "premium":
-            # Сначала отправляем ответ в ВК, потом обрабатываем
             def process():
                 handle_message(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")
             threading.Thread(target=process).start()
