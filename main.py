@@ -61,7 +61,6 @@ def callback():
             threading.Thread(target=handle_message, args=(user_id, text)).start()
         return "ok"
 
-    # Обработка inline-кнопок (callback)
     if body.get("type") == "message_event":
         obj = body.get("object", {})
         user_id = obj.get("user_id")
@@ -71,12 +70,6 @@ def callback():
         cmd = payload.get("cmd", "")
         if cmd == "premium":
             threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
-        # Ответить на callback обязательно
-        vk_api("messages.sendMessageEventAnswer", {
-            "event_id": body.get("event_id"),
-            "user_id": user_id,
-            "peer_id": obj.get("peer_id"),
-        })
         return "ok"
 
     return "ok"
