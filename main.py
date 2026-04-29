@@ -1,7 +1,7 @@
 import json
 import threading
 from datetime import datetime
-from flask import Flask, request
+from flask import Flask, request, Response
 import requests
 from config import *
 from states import *
@@ -48,7 +48,7 @@ def callback():
     log(f"📥 {body.get('type')}")
 
     if body.get("type") == "confirmation":
-        return CONFIRMATION_CODE
+        return Response(CONFIRMATION_CODE, content_type="text/plain")
 
     if body.get("type") == "message_new":
         obj = body.get("object", {})
@@ -59,7 +59,7 @@ def callback():
             user_id = abs(user_id)
         if user_id and text:
             threading.Thread(target=handle_message, args=(user_id, text)).start()
-        return "ok"
+        return Response("ok", content_type="text/plain")
 
     if body.get("type") == "message_event":
         obj = body.get("object", {})
@@ -69,10 +69,13 @@ def callback():
             payload = json.loads(payload)
         cmd = payload.get("cmd", "")
         if cmd == "premium":
-            threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
-        return "ok"
+            # Сначала отправляем ответ в ВК, потом обрабатываем
+            def process():
+                handle_message(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")
+            threading.Thread(target=process).start()
+        return Response("ok", content_type="text/plain")
 
-    return "ok"
+    return Response("ok", content_type="text/plain")
 
 @app.route("/log")
 def show_log():
