@@ -19,17 +19,15 @@ longpoll_ts = None
 
 POINTS_FILE = "/tmp/points.json"
 POINTS_BACKUP = "/tmp/points_backup.json"
-POSTS_FILE = "/tmp/fresh_posts.json"
 
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
 POINTS_PREMIUM = 400
 POINTS_EXPIRE_DAYS = 30
-POST_MAX_AGE_DAYS = 5
 
-# Хранилище постов
-fresh_posts = {}
-fresh_posts_lock = threading.Lock()
+# Дневные лимиты
+MAX_LIKES_PER_DAY = 10
+MAX_COMMENTS_PER_DAY = 5
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
@@ -55,26 +53,49 @@ def save_points(data):
     save_json(POINTS_FILE, data)
     save_json(POINTS_BACKUP, data)
 
-def load_posts():
-    return load_json(POSTS_FILE, {})
-
-def save_posts(data):
-    save_json(POSTS_FILE, data)
-
 def get_user_points(uid):
     data = load_points()
     key = str(uid)
     if key not in data:
-        data[key] = {"points": 0, "last_active": datetime.now().isoformat()}
+        data[key] = {
+            "points": 0,
+            "last_active": datetime.now().isoformat(),
+            "likes_today": 0,
+            "comments_today": 0,
+            "day": datetime.now().strftime("%Y-%m-%d")
+        }
         save_points(data)
+    else:
+        today = datetime.now().strftime("%Y-%m-%d")
+        if data[key].get("day") != today:
+            data[key]["likes_today"] = 0
+            data[key]["comments_today"] = 0
+            data[key]["day"] = today
+            save_points(data)
     return data, key
 
-def add_points(uid, amount):
+def add_points(uid, amount, action_type=None):
     data, key = get_user_points(uid)
+    today = datetime.now().strftime("%Y-%m-%d")
+    if data[key].get("day") != today:
+        data[key]["likes_today"] = 0
+        data[key]["comments_today"] = 0
+        data[key]["day"] = today
+
+    if action_type == "like" and data[key]["likes_today"] >= MAX_LIKES_PER_DAY:
+        return False
+    if action_type == "comment" and data[key]["comments_today"] >= MAX_COMMENTS_PER_DAY:
+        return False
+
     data[key]["points"] = max(0, data[key]["points"] + amount)
     data[key]["last_active"] = datetime.now().isoformat()
+    if action_type == "like":
+        data[key]["likes_today"] += 1
+    elif action_type == "comment":
+        data[key]["comments_today"] += 1
     save_points(data)
-    log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']})")
+    log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
+    return True
 
 def check_points_expiry(uid):
     data, key = get_user_points(uid)
@@ -157,9 +178,9 @@ def handle_message(user_id, text):
             ]
         }
         if expired:
-            send_message(user_id, f"⌛ Баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
+            send_message(user_id, f"⌛ Баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
         else:
-            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно для премиума: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=kb)
+            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно для премиума: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
         return
 
     if t == "📱 Бесплатные настройки":
@@ -192,7 +213,7 @@ def handle_message(user_id, text):
             send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data[key]['points']}\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
         else:
             need = POINTS_PREMIUM - pts
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}\n\n+{POINTS_LIKE} за лайк, +{POINTS_COMMENT} за комментарий", keyboard=back_and_menu_kb())
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -268,7 +289,7 @@ def handle_message(user_id, text):
         total_users = len(data)
         top = sorted(data.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
         top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
-        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total_users}\n📱 Моделей: {len(PHONES)}\n📝 Свежих постов: {len(fresh_posts)}\n\n🏆 Топ-10:\n{top_str}")
+        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total_users}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
         return
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
@@ -281,30 +302,6 @@ def get_longpoll_server():
         longpoll_key = resp["response"]["key"]
         longpoll_ts = resp["response"]["ts"]
         log(f"🔗 LongPoll подключён")
-
-def load_fresh_posts():
-    global fresh_posts
-    fresh_posts = load_posts()
-    now = time.time()
-    for pid in list(fresh_posts.keys()):
-        if now - fresh_posts[pid] > POST_MAX_AGE_DAYS * 86400:
-            del fresh_posts[pid]
-    save_posts(fresh_posts)
-    log(f"📝 Загружено свежих постов: {len(fresh_posts)}")
-
-def add_fresh_post(post_id):
-    with fresh_posts_lock:
-        fresh_posts[post_id] = time.time()
-        save_posts(fresh_posts)
-
-def is_post_fresh(post_id):
-    with fresh_posts_lock:
-        if post_id in fresh_posts:
-            if time.time() - fresh_posts[post_id] < POST_MAX_AGE_DAYS * 86400:
-                return True
-            del fresh_posts[post_id]
-            save_posts(fresh_posts)
-    return False
 
 def longpoll_loop():
     global longpoll_ts
@@ -344,43 +341,30 @@ def longpoll_loop():
                     })
                     if cmd == "premium":
                         threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
-                elif update["type"] == "wall_post_new":
-                    post_id = update["object"].get("id", 0)
-                    if post_id:
-                        add_fresh_post(post_id)
-                        log(f"📝 Новый пост #{post_id} добавлен в свежие")
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
-                    post_id = update["object"].get("post_id", 0)
-                    if uid and post_id:
+                    if uid:
                         if uid < 0:
                             uid = abs(uid)
-                        if is_post_fresh(post_id):
-                            add_points(uid, POINTS_LIKE)
+                        add_points(uid, POINTS_LIKE, "like")
                 elif update["type"] == "like_remove":
                     uid = update["object"].get("liker_id", 0)
-                    post_id = update["object"].get("post_id", 0)
-                    if uid and post_id:
+                    if uid:
                         if uid < 0:
                             uid = abs(uid)
-                        if is_post_fresh(post_id):
-                            add_points(uid, -POINTS_LIKE)
+                        add_points(uid, -POINTS_LIKE, "like")
                 elif update["type"] == "wall_reply_new":
                     uid = update["object"].get("from_id", 0)
-                    post_id = update["object"].get("post_id", 0)
-                    if uid and post_id:
+                    if uid:
                         if uid < 0:
                             uid = abs(uid)
-                        if is_post_fresh(post_id):
-                            add_points(uid, POINTS_COMMENT)
+                        add_points(uid, POINTS_COMMENT, "comment")
                 elif update["type"] == "wall_reply_delete":
                     uid = update["object"].get("from_id", 0)
-                    post_id = update["object"].get("post_id", 0)
-                    if uid and post_id:
+                    if uid:
                         if uid < 0:
                             uid = abs(uid)
-                        if is_post_fresh(post_id):
-                            add_points(uid, -POINTS_COMMENT)
+                        add_points(uid, -POINTS_COMMENT, "comment")
         except Exception as e:
             log(f"⏳ LongPoll: {e}")
             time.sleep(3)
@@ -398,8 +382,7 @@ def show_log():
         return "empty"
 
 if __name__ == "__main__":
-    log("🤖 Бот запускается (LongPoll + Баллы)...")
-    load_fresh_posts()
+    log("🤖 Бот запускается (LongPoll + Баллы + Лимиты)...")
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
