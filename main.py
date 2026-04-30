@@ -24,8 +24,6 @@ POINTS_LIKE = 5
 POINTS_COMMENT = 10
 POINTS_PREMIUM = 400
 POINTS_EXPIRE_DAYS = 30
-
-# Дневные лимиты
 MAX_LIKES_PER_DAY = 10
 MAX_COMMENTS_PER_DAY = 5
 
@@ -164,7 +162,7 @@ def handle_message(user_id, text):
         send_menu(user_id)
         return
 
-    if t == "⭐ Мои баллы":
+    if t == "⭐ МОИ БАЛЛЫ":
         expired = check_points_expiry(user_id)
         data, key = get_user_points(user_id)
         pts = data[key]["points"]
@@ -183,7 +181,7 @@ def handle_message(user_id, text):
             send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно для премиума: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
         return
 
-    if t == "📱 Бесплатные настройки":
+    if t == "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ":
         user_states[user_id] = "FREE_PHONES"
         brands = ["Xiaomi/Redmi/Poco", "Samsung", "iPhone", "Realme", "Tecno/Infinix", "Другие"]
         kb = {"one_time": False, "buttons": []}
