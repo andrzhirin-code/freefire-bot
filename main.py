@@ -128,7 +128,7 @@ def send_menu(user_id):
     kb = {
         "one_time": False,
         "buttons": [
-            [{"action": {"type": "text", "label": "📱 Бесплатные настройки"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ"}, "color": "primary"}],
             [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
             [{"action": {"type": "text", "label": "⭐ Мои баллы"}, "color": "primary"}],
             [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}}],
