@@ -17,8 +17,8 @@ longpoll_server = None
 longpoll_key = None
 longpoll_ts = None
 
-POINTS_FILE = "/tmp/points.json"
-POINTS_BACKUP = "/tmp/points_backup.json"
+POINTS_FILE = "/opt/render/project/src/points.json"
+POINTS_BACKUP = "/opt/render/project/src/points_backup.json"
 
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
@@ -128,13 +128,13 @@ def send_menu(user_id):
     kb = {
         "one_time": False,
         "buttons": [
-            [{"action": {"type": "text", "label": "📱 Бесплатные настройки"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ"}, "color": "primary"}],
             [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
-            [{"action": {"type": "text", "label": "⭐ Мои баллы"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "⭐ МОИ БАЛЛЫ"}, "color": "primary"}],
             [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}}],
         ]
     }
-    send_message(user_id, "🎮 Привет, боец!\n\nЯ бот по настройкам Free Fire.\n\n📱 Бесплатные настройки — готовые конфиги\n🔥 Премиум — ИИ подбирает лично под тебя\n⭐ Баллы — получай за активность и меняй на премиум\n🛒 Магазин — перейти в магазин", keyboard=kb)
+    send_message(user_id, "🎮 Привет, боец!\n\n📱 БЕСПЛАТНЫЕ НАСТРОЙКИ — готовые конфиги\n🔥 ПРЕМИУМ — ИИ подбирает лично под тебя\n⭐ БАЛЛЫ — активничай и меняй на премиум\n🛒 МАГАЗИН — перейти в магазин", keyboard=kb)
 
 def back_and_menu_kb():
     return {
