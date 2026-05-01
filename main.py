@@ -59,9 +59,7 @@ def load_points():
             data = load_json(POINTS_BACKUP, {})
             if data:
                 save_json(POINTS_FILE, data)
-                log("📂 Восстановлено из бекапа")
         points_cache = data
-        log(f"📂 Загружено пользователей: {len(points_cache)}")
 
 def save_points(data):
     global points_cache
@@ -99,20 +97,17 @@ def add_points(uid, amount, action_type=None):
             data[key]["likes_today"] = 0
             data[key]["comments_today"] = 0
             data[key]["day"] = today
-
         if action_type == "like" and data[key].get("likes_today", 0) >= MAX_LIKES_PER_DAY:
             return False
         if action_type == "comment" and data[key].get("comments_today", 0) >= MAX_COMMENTS_PER_DAY:
             return False
-
         data[key]["points"] = max(0, data[key].get("points", 0) + amount)
         data[key]["last_active"] = datetime.now().isoformat()
         if action_type == "like":
-            data[key]["likes_today"] = data[key].get("likes_today", 0) + 1
+            data[key]["likes_today"] += 1
         elif action_type == "comment":
-            data[key]["comments_today"] = data[key].get("comments_today", 0) + 1
+            data[key]["comments_today"] += 1
         save_points(data)
-        log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
     return True
 
 def check_points_expiry(uid):
@@ -120,8 +115,7 @@ def check_points_expiry(uid):
     with points_lock:
         last = data[key].get("last_active")
         if last:
-            last_date = datetime.fromisoformat(last)
-            if datetime.now() - last_date > timedelta(days=POINTS_EXPIRE_DAYS):
+            if datetime.now() - datetime.fromisoformat(last) > timedelta(days=POINTS_EXPIRE_DAYS):
                 data[key]["points"] = 0
                 data[key]["last_active"] = datetime.now().isoformat()
                 save_points(data)
@@ -249,14 +243,14 @@ def handle_message(user_id, text):
             kb["buttons"].append(row)
         kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
                               {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
+        send_message(user_id, "📱 Выбери марку:", keyboard=kb)
         return
 
     if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
-        send_message(user_id, f"✅ Премиум активирован (тестовый режим)!\n\n📱 Вопрос 1 из 7:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
+        send_message(user_id, f"✅ Премиум активирован (тестовый режим)!\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         return
 
     if t == "🔥 Обменять баллы":
@@ -269,7 +263,7 @@ def handle_message(user_id, text):
             user.premium_active = True
             user.corrections_left = MAX_CORRECTIONS
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}", keyboard=back_and_menu_kb())
         else:
             need = POINTS_PREMIUM - pts
             send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}", keyboard=back_and_menu_kb())
@@ -316,32 +310,32 @@ def handle_message(user_id, text):
     if state == "AI_ASK_PHONE":
         user.phone = t
         user_states[user_id] = "AI_ASK_RAM"
-        send_message(user_id, "📱 Вопрос 2 из 7:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
+        send_message(user_id, "📱 Вопрос 2 из 7:\nСколько ОЗУ?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
         user.ram = t
         user_states[user_id] = "AI_ASK_STYLE"
-        send_message(user_id, "🎮 Вопрос 3 из 7:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
+        send_message(user_id, "🎮 Вопрос 3 из 7:\nСтиль игры?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
         user.style = t
         user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 7:\nОсновное оружие?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔫 Вопрос 4 из 7:\nОружие?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t
         user_states[user_id] = "AI_ASK_FINGERS"
-        send_message(user_id, "🤟 Вопрос 5 из 7:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
+        send_message(user_id, "🤟 Вопрос 5 из 7:\nСколько пальцев?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
         user.fingers = t
         user_states[user_id] = "AI_ASK_GYRO"
-        send_message(user_id, "📳 Вопрос 6 из 7:\nИспользуешь гироскоп?\n• Да\n• Нет", keyboard=back_and_menu_kb())
+        send_message(user_id, "📳 Вопрос 6 из 7:\nГироскоп?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_GYRO":
         user.gyro = t
         user_states[user_id] = "AI_ASK_PROBLEM"
-        send_message(user_id, "🔧 Вопрос 7 из 7:\nЕсть проблема?\nЕсли нет — напиши «нет»", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔧 Вопрос 7 из 7:\nПроблема?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_PROBLEM":
         user.problem = t if t.lower() != "нет" else ""
@@ -349,21 +343,20 @@ def handle_message(user_id, text):
         send_message(user_id, "🤖 ИИ подбирает настройки...")
         prompt = build_user_prompt(user)
         response = call_deepseek(prompt)
-        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n\n🏠 Напиши «меню».")
+        send_message(user_id, response + f"\n\n🔄 Корректировок: {user.corrections_left}")
         return
 
     if "корректировка" in t.lower():
         if state == "AI_DONE" and user.corrections_left > 0:
             user_states[user_id] = "CORRECTION"
-            send_message(user_id, f"🔄 Режим корректировки.\nОпиши что исправить.\nОсталось: {user.corrections_left}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"🔄 Режим корректировки.\nОпиши проблему.", keyboard=back_and_menu_kb())
             return
         elif state == "CORRECTION" and user.corrections_left > 0:
             user.corrections_left -= 1
-            send_message(user_id, "🤖 ИИ пересчитывает...")
             prompt = build_correction_prompt(user, t)
             response = call_deepseek(prompt)
             user_states[user_id] = "AI_DONE"
-            send_message(user_id, response + f"\n\n🔄 Осталось: {user.corrections_left}")
+            send_message(user_id, response + f"\n\n🔄 Осталось корректировок: {user.corrections_left}")
             return
         else:
             send_message(user_id, "❌ Лимит корректировок исчерпан.", keyboard=back_and_menu_kb())
@@ -386,7 +379,6 @@ def get_longpoll_server():
         longpoll_server = resp["response"]["server"]
         longpoll_key = resp["response"]["key"]
         longpoll_ts = resp["response"]["ts"]
-        log(f"🔗 LongPoll подключён")
 
 def longpoll_loop():
     global longpoll_ts
@@ -403,28 +395,24 @@ def longpoll_loop():
             for update in resp.get("updates", []):
                 if update["type"] == "message_new":
                     msg = update["object"]["message"]
-                    user_id = msg.get("from_id")
-                    text = msg.get("text", "")
-                    if user_id and user_id < 0:
-                        user_id = abs(user_id)
-                    if user_id and text:
-                        threading.Thread(target=handle_message, args=(user_id, text)).start()
+                    uid = msg.get("from_id")
+                    txt = msg.get("text", "")
+                    if uid and uid < 0: uid = abs(uid)
+                    if uid and txt:
+                        threading.Thread(target=handle_message, args=(uid, txt)).start()
                 elif update["type"] == "message_event":
                     obj = update["object"]
-                    user_id = obj.get("user_id")
-                    event_id = obj.get("event_id")
-                    peer_id = obj.get("peer_id")
+                    uid = obj.get("user_id")
                     payload = obj.get("payload", {})
                     if isinstance(payload, str):
                         payload = json.loads(payload)
-                    cmd = payload.get("cmd", "")
                     vk_api("messages.sendMessageEventAnswer", {
-                        "event_id": event_id,
-                        "user_id": user_id,
-                        "peer_id": peer_id,
+                        "event_id": obj.get("event_id"),
+                        "user_id": uid,
+                        "peer_id": obj.get("peer_id"),
                     })
-                    if cmd == "premium":
-                        threading.Thread(target=handle_message, args=(user_id, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
+                    if payload.get("cmd") == "premium":
+                        threading.Thread(target=handle_message, args=(uid, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     if uid:
@@ -446,7 +434,6 @@ def longpoll_loop():
                         if uid < 0: uid = abs(uid)
                         add_points(uid, -POINTS_COMMENT, "comment")
         except Exception as e:
-            log(f"⏳ LongPoll: {e}")
             time.sleep(3)
 
 def keep_alive():
@@ -482,7 +469,6 @@ def show_points():
         return "no data"
 
 if __name__ == "__main__":
-    log("🤖 Бот запускается (JSON + Бекап)...")
     load_points()
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
