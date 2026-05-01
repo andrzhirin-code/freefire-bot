@@ -10,3 +10,4 @@ CONFIRMATION_CODE = "67c1e5f1"
 PORT = 10000
 SUPABASE_URL = "https://lgsojyugwpnkzhhfbpxc.supabase.co"
 SUPABASE_KEY = "sb_publishable_v1R0Fzw2-PiY4cxip7_tTA_mL0QK4zJ"
+SUPABASE_SECRET_KEY = "sb_secret_0yRM0xHjLHJp6Temi8YA3g_dNQJ9ZH6"
