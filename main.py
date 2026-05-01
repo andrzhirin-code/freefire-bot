@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import requests
 import time
 import os
+import base64
 from flask import Flask
 from config import *
 from states import *
@@ -47,6 +48,19 @@ def save_json(path, data):
     with open(path, "w") as f:
         json.dump(data, f)
 
+def github_save(data):
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/points.json"
+        r = requests.get(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, timeout=10)
+        sha = r.json().get("sha", "") if r.status_code == 200 else ""
+        content = base64.b64encode(json.dumps(data, ensure_ascii=False).encode()).decode()
+        body = {"message": "update points", "content": content}
+        if sha:
+            body["sha"] = sha
+        requests.put(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, json=body, timeout=10)
+    except:
+        pass
+
 def load_points():
     global points_data
     points_data = load_json(POINTS_FILE, {})
@@ -57,6 +71,7 @@ def save_points(data):
     points_data = data
     save_json(POINTS_FILE, data)
     save_json(POINTS_BACKUP, data)
+    threading.Thread(target=github_save, args=(data.copy(),), daemon=True).start()
 
 def get_user_points(uid):
     key = str(uid)
@@ -122,12 +137,6 @@ def vk_api(method, params):
         log(f"❌ VK API {method}: {result['error']['error_msg']}")
     return result
 
-def is_android(phone_model):
-    """Проверяет, является ли телефон Android (не iPhone)"""
-    if not phone_model:
-        return False
-    return "iphone" not in phone_model.lower()
-
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
@@ -167,25 +176,9 @@ def call_deepseek(prompt):
     if not DEEPSEEK_API_KEY:
         return "❌ ИИ не настроен."
     try:
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1500
-        }
-        resp = requests.post(
-            "https://api.proxyapi.ru/deepseek/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30
-        )
+        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+        data = {"model": "deepseek-chat", "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 1500}
+        resp = requests.post("https://api.proxyapi.ru/deepseek/chat/completions", headers=headers, json=data, timeout=30)
         result = resp.json()
         if "choices" in result:
             return result["choices"][0]["message"]["content"]
@@ -305,33 +298,27 @@ def handle_message(user_id, text):
             return
 
     if state == "AI_ASK_PHONE":
-        user.phone = t
-        user_states[user_id] = "AI_ASK_RAM"
+        user.phone = t; user_states[user_id] = "AI_ASK_RAM"
         send_message(user_id, "📱 Вопрос 2 из 7:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
-        user.ram = t
-        user_states[user_id] = "AI_ASK_STYLE"
+        user.ram = t; user_states[user_id] = "AI_ASK_STYLE"
         send_message(user_id, "🎮 Вопрос 3 из 7:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
-        user.style = t
-        user_states[user_id] = "AI_ASK_WEAPON"
+        user.style = t; user_states[user_id] = "AI_ASK_WEAPON"
         send_message(user_id, "🔫 Вопрос 4 из 7:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
-        user.weapon = t
-        user_states[user_id] = "AI_ASK_FINGERS"
+        user.weapon = t; user_states[user_id] = "AI_ASK_FINGERS"
         send_message(user_id, "🤟 Вопрос 5 из 7:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
-        user.fingers = t
-        user_states[user_id] = "AI_ASK_GYRO"
+        user.fingers = t; user_states[user_id] = "AI_ASK_GYRO"
         send_message(user_id, "📳 Вопрос 6 из 7:\nИспользуешь гироскоп?\n• Да\n• Нет", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_GYRO":
-        user.gyro = t
-        user_states[user_id] = "AI_ASK_PROBLEM"
+        user.gyro = t; user_states[user_id] = "AI_ASK_PROBLEM"
         send_message(user_id, "🔧 Вопрос 7 из 7:\nЕсть конкретная проблема?\nНапример:\n• Трудно контролить отдачу\n• Медленный поворот\n• Телефон греется\n\nЕсли проблем нет — напиши «нет»", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_PROBLEM":
