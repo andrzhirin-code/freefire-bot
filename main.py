@@ -87,39 +87,38 @@ def get_user_points(uid):
                 points_cache[key]["comments_today"] = 0
                 points_cache[key]["day"] = today
                 save_points(points_cache)
-    return points_cache, key
+    return points_cache[key]
 
 def add_points(uid, amount, action_type=None):
-    data, key = get_user_points(uid)
+    data = get_user_points(uid)
     with points_lock:
         today = datetime.now().strftime("%Y-%m-%d")
-        if data[key].get("day") != today:
-            data[key]["likes_today"] = 0
-            data[key]["comments_today"] = 0
-            data[key]["day"] = today
-        if action_type == "like" and data[key].get("likes_today", 0) >= MAX_LIKES_PER_DAY:
+        if data.get("day") != today:
+            data["likes_today"] = 0
+            data["comments_today"] = 0
+            data["day"] = today
+        if action_type == "like" and data.get("likes_today", 0) >= MAX_LIKES_PER_DAY:
             return False
-        if action_type == "comment" and data[key].get("comments_today", 0) >= MAX_COMMENTS_PER_DAY:
+        if action_type == "comment" and data.get("comments_today", 0) >= MAX_COMMENTS_PER_DAY:
             return False
-        data[key]["points"] = max(0, data[key].get("points", 0) + amount)
-        data[key]["last_active"] = datetime.now().isoformat()
+        data["points"] = max(0, data.get("points", 0) + amount)
+        data["last_active"] = datetime.now().isoformat()
         if action_type == "like":
-            data[key]["likes_today"] += 1
+            data["likes_today"] += 1
         elif action_type == "comment":
-            data[key]["comments_today"] += 1
-        save_points(data)
-        log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
+            data["comments_today"] += 1
+        save_points(points_cache)
     return True
 
 def check_points_expiry(uid):
-    data, key = get_user_points(uid)
+    data = get_user_points(uid)
     with points_lock:
-        last = data[key].get("last_active")
+        last = data.get("last_active")
         if last:
             if datetime.now() - datetime.fromisoformat(last) > timedelta(days=POINTS_EXPIRE_DAYS):
-                data[key]["points"] = 0
-                data[key]["last_active"] = datetime.now().isoformat()
-                save_points(data)
+                data["points"] = 0
+                data["last_active"] = datetime.now().isoformat()
+                save_points(points_cache)
                 return True
     return False
 
@@ -213,8 +212,8 @@ def handle_message(user_id, text):
 
     if t == "⭐ МОИ БАЛЛЫ":
         expired = check_points_expiry(user_id)
-        data, key = get_user_points(user_id)
-        pts = data[key]["points"]
+        data = get_user_points(user_id)
+        pts = data["points"]
         need = max(0, POINTS_PREMIUM - pts)
         kb = {
             "one_time": False,
@@ -255,16 +254,16 @@ def handle_message(user_id, text):
         return
 
     if t == "🔥 Обменять баллы":
-        data, key = get_user_points(user_id)
+        data = get_user_points(user_id)
         check_points_expiry(user_id)
-        pts = data[key]["points"]
+        pts = data["points"]
         if pts >= POINTS_PREMIUM:
-            data[key]["points"] -= POINTS_PREMIUM
-            save_points(data)
+            data["points"] -= POINTS_PREMIUM
+            save_points(points_cache)
             user.premium_active = True
             user.corrections_left = MAX_CORRECTIONS
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data['points']}\n\n📱 Вопрос 1 из 7:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
         else:
             need = POINTS_PREMIUM - pts
             send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=back_and_menu_kb())
