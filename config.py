@@ -8,3 +8,5 @@ DAYS_BEFORE_NEW = 14
 SECRET_KEY = "aaQ13axAPQEcczQa"
 CONFIRMATION_CODE = "67c1e5f1"
 PORT = 10000
+SUPABASE_URL = "https://lgsojyugwpnkzhhfbpxc.supabase.co"
+SUPABASE_KEY = "sb_publishable_v1R0Fzw2-PiY4cxip7_tTA_mL0QK4zJ"
