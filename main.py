@@ -133,8 +133,10 @@ def vk_api(method, params):
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
-    if keyboard:
-        params["keyboard"] = json.dumps(keyboard)
+    if keyboard is not None:
+        params["keyboard"] = json.dumps(keyboard) if keyboard else ""
+    else:
+        params["keyboard"] = json.dumps({"one_time": False, "buttons": []})
     return vk_api("messages.send", params)
 
 def send_menu(user_id):
