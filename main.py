@@ -19,11 +19,6 @@ longpoll_server = None
 longpoll_key = None
 longpoll_ts = None
 
-from config import GITHUB_TOKEN
-GITHUB_REPO = "andrzhirin-code/freefire-bot"
-GITHUB_PATH = "points.json"
-POINTS_FILE = "/opt/render/project/src/points.json"
-
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
 POINTS_PREMIUM = 400
@@ -33,32 +28,30 @@ MAX_COMMENTS_PER_DAY = 5
 
 points_cache = {}
 points_lock = threading.Lock()
+points_loaded = False
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
         f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
 
 def github_load():
-    """Загрузить points.json из GitHub"""
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
-        resp = requests.get(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, timeout=10)
-        if resp.status_code == 200:
-            content = resp.json().get("content", "")
-            if content:
-                return json.loads(base64.b64decode(content).decode("utf-8"))
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/points.json"
+        r = requests.get(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, timeout=10)
+        if r.status_code == 200:
+            c = r.json().get("content", "")
+            if c:
+                return json.loads(base64.b64decode(c).decode("utf-8"))
     except:
         pass
     return {}
 
 def github_save(data):
-    """Сохранить points.json на GitHub"""
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_PATH}"
-        resp = requests.get(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, timeout=10)
-        sha = resp.json().get("sha", "") if resp.status_code == 200 else ""
-        content = base64.b64encode(json.dumps(data, ensure_ascii=False).encode("utf-8")).decode("utf-8")
-        body = {"message": "update points", "content": content}
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/points.json"
+        r = requests.get(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, timeout=10)
+        sha = r.json().get("sha", "") if r.status_code == 200 else ""
+        body = {"message": "update points", "content": base64.b64encode(json.dumps(data, ensure_ascii=False).encode()).decode()}
         if sha:
             body["sha"] = sha
         requests.put(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, json=body, timeout=10)
@@ -66,39 +59,26 @@ def github_save(data):
         pass
 
 def load_points():
-    global points_cache
+    global points_cache, points_loaded
     with points_lock:
         data = github_load()
-        if not data:
-            if os.path.exists(POINTS_FILE):
-                try:
-                    with open(POINTS_FILE, "r") as f:
-                        data = json.load(f)
-                except:
-                    data = {}
-        points_cache = data
-        log(f"📂 Загружено пользователей: {len(points_cache)}")
+        if data:
+            points_cache = data
+        points_loaded = True
 
 def save_points(data):
     global points_cache
     with points_lock:
         points_cache = data
-        try:
-            with open(POINTS_FILE, "w") as f:
-                json.dump(data, f)
-        except:
-            pass
-        threading.Thread(target=github_save, args=(data,), daemon=True).start()
+        threading.Thread(target=github_save, args=(data.copy(),), daemon=True).start()
 
 def get_user_points(uid):
     key = str(uid)
     with points_lock:
         if key not in points_cache:
             points_cache[key] = {
-                "points": 0,
-                "last_active": datetime.now().isoformat(),
-                "likes_today": 0,
-                "comments_today": 0,
+                "points": 0, "last_active": datetime.now().isoformat(),
+                "likes_today": 0, "comments_today": 0,
                 "day": datetime.now().strftime("%Y-%m-%d")
             }
             save_points(points_cache)
@@ -192,32 +172,16 @@ def call_deepseek(prompt):
     if not DEEPSEEK_API_KEY:
         return "❌ ИИ не настроен."
     try:
-        headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.7,
-            "max_tokens": 1500
-        }
-        resp = requests.post(
-            "https://api.proxyapi.ru/deepseek/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=30
-        )
-        result = resp.json()
+        headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}", "Content-Type": "application/json"}
+        data = {"model": "deepseek-chat", "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}], "temperature": 0.7, "max_tokens": 1500}
+        r = requests.post("https://api.proxyapi.ru/deepseek/chat/completions", headers=headers, json=data, timeout=30)
+        result = r.json()
         if "choices" in result:
             return result["choices"][0]["message"]["content"]
         else:
-            return "❌ Ошибка ИИ. Попробуй позже."
+            return "❌ Ошибка ИИ."
     except:
-        return "❌ Ошибка ИИ. Попробуй позже."
+        return "❌ Ошибка ИИ."
 
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
@@ -244,9 +208,9 @@ def handle_message(user_id, text):
             ]
         }
         if expired:
-            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
+            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}", keyboard=kb)
         else:
-            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
+            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}", keyboard=kb)
         return
 
     if t == "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ":
@@ -327,33 +291,27 @@ def handle_message(user_id, text):
             return
 
     if state == "AI_ASK_PHONE":
-        user.phone = t
-        user_states[user_id] = "AI_ASK_RAM"
+        user.phone = t; user_states[user_id] = "AI_ASK_RAM"
         send_message(user_id, "📱 Вопрос 2 из 7:\nСколько ОЗУ?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
-        user.ram = t
-        user_states[user_id] = "AI_ASK_STYLE"
+        user.ram = t; user_states[user_id] = "AI_ASK_STYLE"
         send_message(user_id, "🎮 Вопрос 3 из 7:\nСтиль игры?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
-        user.style = t
-        user_states[user_id] = "AI_ASK_WEAPON"
+        user.style = t; user_states[user_id] = "AI_ASK_WEAPON"
         send_message(user_id, "🔫 Вопрос 4 из 7:\nОружие?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
-        user.weapon = t
-        user_states[user_id] = "AI_ASK_FINGERS"
+        user.weapon = t; user_states[user_id] = "AI_ASK_FINGERS"
         send_message(user_id, "🤟 Вопрос 5 из 7:\nСколько пальцев?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
-        user.fingers = t
-        user_states[user_id] = "AI_ASK_GYRO"
+        user.fingers = t; user_states[user_id] = "AI_ASK_GYRO"
         send_message(user_id, "📳 Вопрос 6 из 7:\nГироскоп?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_GYRO":
-        user.gyro = t
-        user_states[user_id] = "AI_ASK_PROBLEM"
+        user.gyro = t; user_states[user_id] = "AI_ASK_PROBLEM"
         send_message(user_id, "🔧 Вопрос 7 из 7:\nПроблема?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_PROBLEM":
