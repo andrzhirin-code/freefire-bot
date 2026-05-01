@@ -31,7 +31,6 @@ def log(msg):
 
 # ============ SUPABASE ============
 def supabase_get(key):
-    """Получить данные пользователя из Supabase"""
     try:
         resp = requests.get(
             f"{SUPABASE_URL}/rest/v1/points?user_id=eq.{key}",
@@ -47,13 +46,12 @@ def supabase_get(key):
         return None
 
 def supabase_upsert(data):
-    """Сохранить или обновить данные пользователя"""
     try:
         requests.post(
             f"{SUPABASE_URL}/rest/v1/points",
             headers={
                 "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
                 "Content-Type": "application/json",
                 "Prefer": "resolution=merge-duplicates"
             },
@@ -123,7 +121,6 @@ def check_points_expiry(uid):
             return True
     return False
 
-# ============ VK API ============
 def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
