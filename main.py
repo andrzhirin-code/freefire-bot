@@ -47,7 +47,7 @@ def supabase_get(key):
 
 def supabase_upsert(data):
     try:
-        requests.post(
+        resp = requests.post(
             f"{SUPABASE_URL}/rest/v1/points",
             headers={
                 "apikey": SUPABASE_KEY,
@@ -58,9 +58,10 @@ def supabase_upsert(data):
             json=data,
             timeout=10
         )
-    except:
-        pass
-
+        log(f"📤 Supabase upsert: {resp.status_code} {resp.text[:200]}")
+    except Exception as e:
+        log(f"❌ Supabase upsert error: {e}")
+        
 def get_user_points(uid):
     key = str(uid)
     data = supabase_get(key)
