@@ -18,6 +18,9 @@ longpoll_server = None
 longpoll_key = None
 longpoll_ts = None
 
+POINTS_FILE = "/opt/render/project/src/points.json"
+POINTS_BACKUP = "/opt/render/project/src/points_backup.json"
+
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
 POINTS_PREMIUM = 400
@@ -25,101 +28,104 @@ POINTS_EXPIRE_DAYS = 30
 MAX_LIKES_PER_DAY = 10
 MAX_COMMENTS_PER_DAY = 5
 
+points_cache = {}
+points_lock = threading.Lock()
+
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
         f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
 
-# ============ SUPABASE ============
-def supabase_get(key):
-    try:
-        resp = requests.get(
-            f"{SUPABASE_URL}/rest/v1/points?user_id=eq.{key}",
-            headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"},
-            timeout=10
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if data:
-                return data[0]
-        return None
-    except:
-        return None
+def load_json(path, default):
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return default
 
-def supabase_upsert(data):
+def save_json(path, data):
     try:
-        resp = requests.post(
-            f"{SUPABASE_URL}/rest/v1/points",
-            headers={
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SECRET_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "resolution=merge-duplicates"
-            },
-            json=data,
-            timeout=10
-        )
-        log(f"📤 Supabase upsert: {resp.status_code} {resp.text[:200]}")
-    except Exception as e:
-        log(f"❌ Supabase upsert error: {e}")
-        
-def get_user_points(uid):
-    key = str(uid)
-    data = supabase_get(key)
-    if not data:
-        data = {
-            "user_id": key,
-            "points": 0,
-            "last_active": datetime.now().isoformat(),
-            "likes_today": 0,
-            "comments_today": 0,
-            "day": datetime.now().strftime("%Y-%m-%d")
-        }
-        supabase_upsert(data)
-    else:
-        today = datetime.now().strftime("%Y-%m-%d")
-        if data.get("day") != today:
-            data["likes_today"] = 0
-            data["comments_today"] = 0
-            data["day"] = today
-            supabase_upsert(data)
-    return data
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except:
+        pass
+
+def load_points():
+    global points_cache
+    with points_lock:
+        data = load_json(POINTS_FILE, {})
+        if not data:
+            data = load_json(POINTS_BACKUP, {})
+            if data:
+                save_json(POINTS_FILE, data)
+                log("📂 Восстановлено из бекапа")
+        points_cache = data
+        log(f"📂 Загружено пользователей: {len(points_cache)}")
 
 def save_points(data):
-    supabase_upsert(data)
+    global points_cache
+    with points_lock:
+        points_cache = data
+        save_json(POINTS_FILE, data)
+        save_json(POINTS_BACKUP, data)
+
+def get_user_points(uid):
+    key = str(uid)
+    with points_lock:
+        if key not in points_cache:
+            points_cache[key] = {
+                "points": 0,
+                "last_active": datetime.now().isoformat(),
+                "likes_today": 0,
+                "comments_today": 0,
+                "day": datetime.now().strftime("%Y-%m-%d")
+            }
+            save_points(points_cache)
+        else:
+            today = datetime.now().strftime("%Y-%m-%d")
+            if points_cache[key].get("day") != today:
+                points_cache[key]["likes_today"] = 0
+                points_cache[key]["comments_today"] = 0
+                points_cache[key]["day"] = today
+                save_points(points_cache)
+    return points_cache, key
 
 def add_points(uid, amount, action_type=None):
-    data = get_user_points(uid)
-    today = datetime.now().strftime("%Y-%m-%d")
-    if data.get("day") != today:
-        data["likes_today"] = 0
-        data["comments_today"] = 0
-        data["day"] = today
+    data, key = get_user_points(uid)
+    with points_lock:
+        today = datetime.now().strftime("%Y-%m-%d")
+        if data[key].get("day") != today:
+            data[key]["likes_today"] = 0
+            data[key]["comments_today"] = 0
+            data[key]["day"] = today
 
-    if action_type == "like" and data.get("likes_today", 0) >= MAX_LIKES_PER_DAY:
-        return False
-    if action_type == "comment" and data.get("comments_today", 0) >= MAX_COMMENTS_PER_DAY:
-        return False
+        if action_type == "like" and data[key].get("likes_today", 0) >= MAX_LIKES_PER_DAY:
+            return False
+        if action_type == "comment" and data[key].get("comments_today", 0) >= MAX_COMMENTS_PER_DAY:
+            return False
 
-    data["points"] = max(0, data.get("points", 0) + amount)
-    data["last_active"] = datetime.now().isoformat()
-    if action_type == "like":
-        data["likes_today"] = data.get("likes_today", 0) + 1
-    elif action_type == "comment":
-        data["comments_today"] = data.get("comments_today", 0) + 1
-    save_points(data)
-    log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data['points']}) [{action_type}]")
+        data[key]["points"] = max(0, data[key].get("points", 0) + amount)
+        data[key]["last_active"] = datetime.now().isoformat()
+        if action_type == "like":
+            data[key]["likes_today"] = data[key].get("likes_today", 0) + 1
+        elif action_type == "comment":
+            data[key]["comments_today"] = data[key].get("comments_today", 0) + 1
+        save_points(data)
+        log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
     return True
 
 def check_points_expiry(uid):
-    data = get_user_points(uid)
-    last = data.get("last_active")
-    if last:
-        last_date = datetime.fromisoformat(last)
-        if datetime.now() - last_date > timedelta(days=POINTS_EXPIRE_DAYS):
-            data["points"] = 0
-            data["last_active"] = datetime.now().isoformat()
-            save_points(data)
-            return True
+    data, key = get_user_points(uid)
+    with points_lock:
+        last = data[key].get("last_active")
+        if last:
+            last_date = datetime.fromisoformat(last)
+            if datetime.now() - last_date > timedelta(days=POINTS_EXPIRE_DAYS):
+                data[key]["points"] = 0
+                data[key]["last_active"] = datetime.now().isoformat()
+                save_points(data)
+                return True
     return False
 
 def vk_api(method, params):
@@ -212,8 +218,8 @@ def handle_message(user_id, text):
 
     if t == "⭐ МОИ БАЛЛЫ":
         expired = check_points_expiry(user_id)
-        data = get_user_points(user_id)
-        pts = data["points"]
+        data, key = get_user_points(user_id)
+        pts = data[key]["points"]
         need = max(0, POINTS_PREMIUM - pts)
         kb = {
             "one_time": False,
@@ -224,9 +230,9 @@ def handle_message(user_id, text):
             ]
         }
         if expired:
-            send_message(user_id, f"⌛ Баллы сгорели из-за неактивности.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
+            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
         else:
-            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно для премиума: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
+            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=kb)
         return
 
     if t == "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ":
@@ -254,19 +260,19 @@ def handle_message(user_id, text):
         return
 
     if t == "🔥 Обменять баллы":
-        data = get_user_points(user_id)
+        data, key = get_user_points(user_id)
         check_points_expiry(user_id)
-        pts = data["points"]
+        pts = data[key]["points"]
         if pts >= POINTS_PREMIUM:
-            data["points"] -= POINTS_PREMIUM
+            data[key]["points"] -= POINTS_PREMIUM
             save_points(data)
             user.premium_active = True
             user.corrections_left = MAX_CORRECTIONS
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data['points']}\n\n📱 Вопрос 1 из 7:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         else:
             need = POINTS_PREMIUM - pts
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=back_and_menu_kb())
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -320,7 +326,7 @@ def handle_message(user_id, text):
     if state == "AI_ASK_STYLE":
         user.style = t
         user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 7:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔫 Вопрос 4 из 7:\nОсновное оружие?", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t
@@ -335,36 +341,40 @@ def handle_message(user_id, text):
     if state == "AI_ASK_GYRO":
         user.gyro = t
         user_states[user_id] = "AI_ASK_PROBLEM"
-        send_message(user_id, "🔧 Вопрос 7 из 7:\nЕсть конкретная проблема?\nНапример:\n• Трудно контролить отдачу\n• Медленный поворот\n• Телефон греется\n\nЕсли проблем нет — напиши «нет»", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔧 Вопрос 7 из 7:\nЕсть проблема?\nЕсли нет — напиши «нет»", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_PROBLEM":
         user.problem = t if t.lower() != "нет" else ""
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🤖 ИИ подбирает персональные настройки...\nЭто займёт 5-10 секунд.")
+        send_message(user_id, "🤖 ИИ подбирает настройки...")
         prompt = build_user_prompt(user)
         response = call_deepseek(prompt)
-        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n\n🏠 Напиши «меню» чтобы вернуться в главное меню.")
+        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n\n🏠 Напиши «меню».")
         return
 
     if "корректировка" in t.lower():
         if state == "AI_DONE" and user.corrections_left > 0:
             user_states[user_id] = "CORRECTION"
-            send_message(user_id, f"🔄 Режим корректировки.\nОпиши что именно нужно исправить.\nОсталось корректировок: {user.corrections_left}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"🔄 Режим корректировки.\nОпиши что исправить.\nОсталось: {user.corrections_left}", keyboard=back_and_menu_kb())
             return
         elif state == "CORRECTION" and user.corrections_left > 0:
             user.corrections_left -= 1
-            send_message(user_id, "🤖 ИИ пересчитывает настройки...")
+            send_message(user_id, "🤖 ИИ пересчитывает...")
             prompt = build_correction_prompt(user, t)
             response = call_deepseek(prompt)
             user_states[user_id] = "AI_DONE"
-            send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n\n🏠 Напиши «меню» чтобы вернуться в главное меню.")
+            send_message(user_id, response + f"\n\n🔄 Осталось: {user.corrections_left}")
             return
         else:
             send_message(user_id, "❌ Лимит корректировок исчерпан.", keyboard=back_and_menu_kb())
             return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
-        send_message(user_id, f"📊 СТАТИСТИКА\n📱 Моделей: {len(PHONES)}\n\nБаллы в облаке Supabase — не пропадут.")
+        with points_lock:
+            total = len(points_cache)
+            top = sorted(points_cache.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
+        top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
+        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
         return
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
@@ -408,7 +418,6 @@ def longpoll_loop():
                     if isinstance(payload, str):
                         payload = json.loads(payload)
                     cmd = payload.get("cmd", "")
-                    log(f"🖲 message_event: user={user_id} cmd={cmd}")
                     vk_api("messages.sendMessageEventAnswer", {
                         "event_id": event_id,
                         "user_id": user_id,
@@ -419,26 +428,22 @@ def longpoll_loop():
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     if uid:
-                        if uid < 0:
-                            uid = abs(uid)
+                        if uid < 0: uid = abs(uid)
                         add_points(uid, POINTS_LIKE, "like")
                 elif update["type"] == "like_remove":
                     uid = update["object"].get("liker_id", 0)
                     if uid:
-                        if uid < 0:
-                            uid = abs(uid)
+                        if uid < 0: uid = abs(uid)
                         add_points(uid, -POINTS_LIKE, "like")
                 elif update["type"] == "wall_reply_new":
                     uid = update["object"].get("from_id", 0)
                     if uid:
-                        if uid < 0:
-                            uid = abs(uid)
+                        if uid < 0: uid = abs(uid)
                         add_points(uid, POINTS_COMMENT, "comment")
                 elif update["type"] == "wall_reply_delete":
                     uid = update["object"].get("from_id", 0)
                     if uid:
-                        if uid < 0:
-                            uid = abs(uid)
+                        if uid < 0: uid = abs(uid)
                         add_points(uid, -POINTS_COMMENT, "comment")
         except Exception as e:
             log(f"⏳ LongPoll: {e}")
@@ -468,8 +473,17 @@ def show_log():
     except:
         return "empty"
 
+@app.route("/points")
+def show_points():
+    try:
+        with open(POINTS_FILE, "r") as f:
+            return "<pre>" + f.read() + "</pre>"
+    except:
+        return "no data"
+
 if __name__ == "__main__":
-    log("🤖 Бот запускается (Supabase)...")
+    log("🤖 Бот запускается (JSON + Бекап)...")
+    load_points()
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
     threading.Thread(target=keep_alive, daemon=True).start()
