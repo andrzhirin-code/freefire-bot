@@ -133,10 +133,8 @@ def vk_api(method, params):
 
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
-    if keyboard is not None:
-        params["keyboard"] = json.dumps(keyboard) if keyboard else ""
-    else:
-        params["keyboard"] = json.dumps({"one_time": False, "buttons": []})
+    if keyboard:
+        params["keyboard"] = json.dumps(keyboard)
     return vk_api("messages.send", params)
 
 def send_menu(user_id):
@@ -252,7 +250,7 @@ def handle_message(user_id, text):
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
-        send_message(user_id, f"✅ Премиум активирован (тестовый режим)!\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
+        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         return
 
     if t == "🔥 Обменять баллы":
@@ -265,10 +263,9 @@ def handle_message(user_id, text):
             user.premium_active = True
             user.corrections_left = MAX_CORRECTIONS
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}", keyboard=back_and_menu_kb())
         else:
-            need = POINTS_PREMIUM - pts
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -351,17 +348,17 @@ def handle_message(user_id, text):
     if "корректировка" in t.lower():
         if state == "AI_DONE" and user.corrections_left > 0:
             user_states[user_id] = "CORRECTION"
-            send_message(user_id, f"🔄 Режим корректировки.\nОпиши проблему.", keyboard=back_and_menu_kb())
+            send_message(user_id, "🔄 Опиши проблему.", keyboard=back_and_menu_kb())
             return
         elif state == "CORRECTION" and user.corrections_left > 0:
             user.corrections_left -= 1
             prompt = build_correction_prompt(user, t)
             response = call_deepseek(prompt)
             user_states[user_id] = "AI_DONE"
-            send_message(user_id, response + f"\n\n🔄 Осталось корректировок: {user.corrections_left}")
+            send_message(user_id, response + f"\n\n🔄 Осталось: {user.corrections_left}")
             return
         else:
-            send_message(user_id, "❌ Лимит корректировок исчерпан.", keyboard=back_and_menu_kb())
+            send_message(user_id, "❌ Лимит исчерпан.", keyboard=back_and_menu_kb())
             return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
