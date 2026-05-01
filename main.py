@@ -19,7 +19,7 @@ longpoll_server = None
 longpoll_key = None
 longpoll_ts = None
 
-GITHUB_TOKEN = "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"
+from config import GITHUB_TOKEN
 GITHUB_REPO = "andrzhirin-code/freefire-bot"
 GITHUB_PATH = "points.json"
 POINTS_FILE = "/opt/render/project/src/points.json"
