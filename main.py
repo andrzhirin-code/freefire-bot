@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 import requests
 import time
 import os
-import base64
 from flask import Flask
 from config import *
 from states import *
@@ -45,25 +44,47 @@ def load_json(path, default):
     return default
 
 def save_json(path, data):
-    with open(path, "w") as f:
-        json.dump(data, f)
-
-def github_save(data):
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/points.json"
-        r = requests.get(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, timeout=10)
-        sha = r.json().get("sha", "") if r.status_code == 200 else ""
-        content = base64.b64encode(json.dumps(data, ensure_ascii=False).encode()).decode()
-        body = {"message": "update points", "content": content}
-        if sha:
-            body["sha"] = sha
-        requests.put(url, headers={"Authorization": f"token {GITHUB_TOKEN}"}, json=body, timeout=10)
+        with open(path, "w") as f:
+            json.dump(data, f)
+    except:
+        pass
+
+def jsonbin_load():
+    try:
+        r = requests.get(
+            f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}/latest",
+            headers={"X-Master-Key": JSONBIN_KEY},
+            timeout=10
+        )
+        if r.status_code == 200:
+            return r.json().get("record", {})
+    except:
+        pass
+    return {}
+
+def jsonbin_save(data):
+    try:
+        requests.put(
+            f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
+            headers={
+                "X-Master-Key": JSONBIN_KEY,
+                "Content-Type": "application/json"
+            },
+            json=data,
+            timeout=10
+        )
     except:
         pass
 
 def load_points():
     global points_data
-    points_data = load_json(POINTS_FILE, {})
+    data = jsonbin_load()
+    if not data:
+        data = load_json(POINTS_FILE, {})
+        if not data:
+            data = load_json(POINTS_BACKUP, {})
+    points_data = data
     log(f"📂 Загружено пользователей: {len(points_data)}")
 
 def save_points(data):
@@ -71,7 +92,7 @@ def save_points(data):
     points_data = data
     save_json(POINTS_FILE, data)
     save_json(POINTS_BACKUP, data)
-    threading.Thread(target=github_save, args=(data.copy(),), daemon=True).start()
+    threading.Thread(target=jsonbin_save, args=(data.copy(),), daemon=True).start()
 
 def get_user_points(uid):
     key = str(uid)
@@ -453,14 +474,6 @@ def show_log():
             return "<pre>" + f.read() + "</pre>"
     except:
         return "empty"
-
-@app.route("/points")
-def show_points():
-    try:
-        with open(POINTS_FILE, "r") as f:
-            return "<pre>" + f.read() + "</pre>"
-    except:
-        return "no data"
 
 if __name__ == "__main__":
     log("🤖 Бот запускается...")
