@@ -9,6 +9,7 @@ from config import *
 from states import *
 from database import get_user
 from phones_db import *
+from prompts import SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
 
 app = Flask(__name__)
 user_states = {}
@@ -26,6 +27,8 @@ POINTS_PREMIUM = 400
 POINTS_EXPIRE_DAYS = 30
 MAX_LIKES_PER_DAY = 10
 MAX_COMMENTS_PER_DAY = 5
+
+points_data = {}
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
@@ -45,32 +48,34 @@ def save_json(path, data):
         json.dump(data, f)
 
 def load_points():
-    return load_json(POINTS_FILE, {})
+    global points_data
+    points_data = load_json(POINTS_FILE, {})
 
 def save_points(data):
+    global points_data
+    points_data = data
     save_json(POINTS_FILE, data)
     save_json(POINTS_BACKUP, data)
 
 def get_user_points(uid):
-    data = load_points()
     key = str(uid)
-    if key not in data:
-        data[key] = {
+    if key not in points_data:
+        points_data[key] = {
             "points": 0,
             "last_active": datetime.now().isoformat(),
             "likes_today": 0,
             "comments_today": 0,
             "day": datetime.now().strftime("%Y-%m-%d")
         }
-        save_points(data)
+        save_points(points_data)
     else:
         today = datetime.now().strftime("%Y-%m-%d")
-        if data[key].get("day") != today:
-            data[key]["likes_today"] = 0
-            data[key]["comments_today"] = 0
-            data[key]["day"] = today
-            save_points(data)
-    return data, key
+        if points_data[key].get("day") != today:
+            points_data[key]["likes_today"] = 0
+            points_data[key]["comments_today"] = 0
+            points_data[key]["day"] = today
+            save_points(points_data)
+    return points_data, key
 
 def add_points(uid, amount, action_type=None):
     data, key = get_user_points(uid)
@@ -151,6 +156,39 @@ def premium_inline_kb():
         ]
     }
 
+def call_deepseek(prompt):
+    if not DEEPSEEK_API_KEY:
+        return "❌ ИИ не настроен."
+    try:
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1500
+        }
+        resp = requests.post(
+            "https://api.proxyapi.ru/deepseek/chat/completions",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        result = resp.json()
+        if "choices" in result:
+            return result["choices"][0]["message"]["content"]
+        else:
+            log(f"❌ DeepSeek: {result}")
+            return "❌ Ошибка ИИ. Попробуй позже."
+    except Exception as e:
+        log(f"❌ DeepSeek: {e}")
+        return "❌ Ошибка ИИ. Попробуй позже."
+
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
     user = get_user(user_id)
@@ -198,7 +236,15 @@ def handle_message(user_id, text):
         send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
-    if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум", "🔥 Обменять баллы"]:
+    if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
+        # Бесплатный тестовый доступ — активируем без баллов
+        user.premium_active = True
+        user.corrections_left = MAX_CORRECTIONS
+        user_states[user_id] = "AI_ASK_PHONE"
+        send_message(user_id, f"✅ Премиум активирован (тестовый режим)!\n\n📱 Вопрос 1 из 6:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
+        return
+
+    if t == "🔥 Обменять баллы":
         data, key = get_user_points(user_id)
         check_points_expiry(user_id)
         pts = data[key]["points"]
@@ -208,7 +254,7 @@ def handle_message(user_id, text):
             user.premium_active = True
             user.corrections_left = MAX_CORRECTIONS
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data[key]['points']}\n\n📱 Вопрос 1 из 5:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось баллов: {data[key]['points']}\n\n📱 Вопрос 1 из 6:\nНапиши точную модель телефона.\nНапример: Redmi Note 10, iPhone 11", keyboard=back_and_menu_kb())
         else:
             need = POINTS_PREMIUM - pts
             send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}\n\n+{POINTS_LIKE} за лайк (макс {MAX_LIKES_PER_DAY}/день)\n+{POINTS_COMMENT} за комментарий (макс {MAX_COMMENTS_PER_DAY}/день)", keyboard=back_and_menu_kb())
@@ -255,39 +301,48 @@ def handle_message(user_id, text):
     if state == "AI_ASK_PHONE":
         user.phone = t
         user_states[user_id] = "AI_ASK_RAM"
-        send_message(user_id, "📱 Вопрос 2 из 5:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
+        send_message(user_id, "📱 Вопрос 2 из 6:\nСколько ОЗУ?\n• 2-3 ГБ\n• 4-6 ГБ\n• 8+ ГБ\n• Не знаю", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_RAM":
         user.ram = t
         user_states[user_id] = "AI_ASK_STYLE"
-        send_message(user_id, "🎮 Вопрос 3 из 5:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
+        send_message(user_id, "🎮 Вопрос 3 из 6:\nСтиль игры?\n• Агрессивный\n• Пассивный\n• Смешанный", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_STYLE":
         user.style = t
         user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 5:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔫 Вопрос 4 из 6:\nОсновное оружие?\nНапример: M4A1, AK47, SCAR", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t
         user_states[user_id] = "AI_ASK_FINGERS"
-        send_message(user_id, "🤟 Вопрос 5 из 5:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
+        send_message(user_id, "🤟 Вопрос 5 из 6:\nСколько пальцев?\n• 2\n• 4\n• 6", keyboard=back_and_menu_kb())
         return
     if state == "AI_ASK_FINGERS":
         user.fingers = t
+        user_states[user_id] = "AI_ASK_PROBLEM"
+        send_message(user_id, "🔧 Вопрос 6 из 6:\nЕсть конкретная проблема?\nНапример:\n• Трудно контролить отдачу\n• Медленный поворот\n• Телефон греется\n\nЕсли проблем нет — напиши «нет»", keyboard=back_and_menu_kb())
+        return
+    if state == "AI_ASK_PROBLEM":
+        user.problem = t if t.lower() != "нет" else ""
         user_states[user_id] = "AI_DONE"
-        send_message(user_id, "🎯 Готово! ИИ подбирает настройки...\n(ИИ пока в разработке)")
+        send_message(user_id, "🤖 ИИ подбирает персональные настройки...\nЭто займёт 5-10 секунд.")
+        prompt = build_user_prompt(user)
+        response = call_deepseek(prompt)
+        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}", keyboard=premium_inline_kb())
         return
 
     if "корректировка" in t.lower():
+        if state == "AI_DONE" and user.corrections_left > 0:
+            user_states[user_id] = "CORRECTION"
+            user.corrections_left -= 1
         send_message(user_id, "🔄 Корректировка пока в разработке", keyboard=back_and_menu_kb())
         return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
-        data = load_points()
-        total_users = len(data)
-        top = sorted(data.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
+        top = sorted(points_data.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
         top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
-        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total_users}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
+        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {len(points_data)}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
         return
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
@@ -367,6 +422,14 @@ def longpoll_loop():
             log(f"⏳ LongPoll: {e}")
             time.sleep(3)
 
+def keep_alive():
+    while True:
+        time.sleep(600)
+        try:
+            requests.get(f"http://localhost:{PORT}/")
+        except:
+            pass
+
 @app.route("/")
 def home():
     return "Bot is running"
@@ -380,7 +443,9 @@ def show_log():
         return "empty"
 
 if __name__ == "__main__":
-    log("🤖 Бот запускается (LongPoll + Баллы + Лимиты)...")
+    log("🤖 Бот запускается (LongPoll + Баллы + DeepSeek)...")
+    load_points()
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
+    threading.Thread(target=keep_alive, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
