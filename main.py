@@ -80,11 +80,14 @@ def jsonbin_save(data):
 def load_points():
     global points_data
     data = jsonbin_load()
-    if not data:
+    if data:
+        points_data = data
+    else:
         data = load_json(POINTS_FILE, {})
-        if not data:
-            data = load_json(POINTS_BACKUP, {})
-    points_data = data
+        if data:
+            points_data = data
+        else:
+            points_data = load_json(POINTS_BACKUP, {})
     log(f"📂 Загружено пользователей: {len(points_data)}")
 
 def save_points(data):
@@ -92,7 +95,8 @@ def save_points(data):
     points_data = data
     save_json(POINTS_FILE, data)
     save_json(POINTS_BACKUP, data)
-    threading.Thread(target=jsonbin_save, args=(data.copy(),), daemon=True).start()
+    if data:  # сохраняем в JSONbin только если данные не пустые
+        threading.Thread(target=jsonbin_save, args=(data.copy(),), daemon=True).start()
 
 def get_user_points(uid):
     key = str(uid)
