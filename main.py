@@ -50,6 +50,7 @@ def save_json(path, data):
 def load_points():
     global points_data
     points_data = load_json(POINTS_FILE, {})
+    log(f"📂 Загружено пользователей: {len(points_data)}")
 
 def save_points(data):
     global points_data
@@ -237,7 +238,6 @@ def handle_message(user_id, text):
         return
 
     if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
-        # Бесплатный тестовый доступ — активируем без баллов
         user.premium_active = True
         user.corrections_left = MAX_CORRECTIONS
         user_states[user_id] = "AI_ASK_PHONE"
@@ -329,15 +329,25 @@ def handle_message(user_id, text):
         send_message(user_id, "🤖 ИИ подбирает персональные настройки...\nЭто займёт 5-10 секунд.")
         prompt = build_user_prompt(user)
         response = call_deepseek(prompt)
-        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}", keyboard=premium_inline_kb())
+        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n\n🏠 Напиши «меню» чтобы вернуться в главное меню.")
         return
 
     if "корректировка" in t.lower():
         if state == "AI_DONE" and user.corrections_left > 0:
             user_states[user_id] = "CORRECTION"
+            send_message(user_id, f"🔄 Режим корректировки.\nОпиши что именно нужно исправить.\nОсталось корректировок: {user.corrections_left}", keyboard=back_and_menu_kb())
+            return
+        elif state == "CORRECTION" and user.corrections_left > 0:
             user.corrections_left -= 1
-        send_message(user_id, "🔄 Корректировка пока в разработке", keyboard=back_and_menu_kb())
-        return
+            send_message(user_id, "🤖 ИИ пересчитывает настройки...")
+            prompt = build_correction_prompt(user, t)
+            response = call_deepseek(prompt)
+            user_states[user_id] = "AI_DONE"
+            send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {user.corrections_left}\n\n🏠 Напиши «меню» чтобы вернуться в главное меню.")
+            return
+        else:
+            send_message(user_id, "❌ Лимит корректировок исчерпан.", keyboard=back_and_menu_kb())
+            return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
         top = sorted(points_data.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
@@ -424,15 +434,19 @@ def longpoll_loop():
 
 def keep_alive():
     while True:
-        time.sleep(600)
+        time.sleep(540)  # 9 минут
         try:
-            requests.get(f"http://localhost:{PORT}/")
+            requests.get("https://freefire-bot-xzgu.onrender.com/ping")
         except:
             pass
 
 @app.route("/")
 def home():
     return "Bot is running"
+
+@app.route("/ping")
+def ping():
+    return "ok"
 
 @app.route("/log")
 def show_log():
@@ -442,8 +456,16 @@ def show_log():
     except:
         return "empty"
 
+@app.route("/points")
+def show_points():
+    try:
+        with open(POINTS_FILE, "r") as f:
+            return "<pre>" + f.read() + "</pre>"
+    except:
+        return "no data"
+
 if __name__ == "__main__":
-    log("🤖 Бот запускается (LongPoll + Баллы + DeepSeek)...")
+    log("🤖 Бот запускается...")
     load_points()
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
