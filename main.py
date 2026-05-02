@@ -274,7 +274,7 @@ def handle_message(user_id, text):
         send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
-    if t == "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽":
+    if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
         send_message(user_id,
             "🔥 ПРЕМИУМ НАСТРОЙКА\n\n"
             "Что ты получишь:\n"
