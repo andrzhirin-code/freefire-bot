@@ -60,14 +60,16 @@ def jsonbin_load():
             timeout=10
         )
         if r.status_code == 200:
-            return r.json().get("record", {})
-    except:
-        pass
+            data = r.json().get("record", {})
+            log(f"📥 JSONbin загружен: {len(data)} пользователей")
+            return data
+    except Exception as e:
+        log(f"❌ JSONbin load error: {e}")
     return {}
 
 def jsonbin_save(data):
     try:
-        requests.put(
+        r = requests.put(
             f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
             headers={
                 "X-Master-Key": JSONBIN_KEY,
@@ -76,8 +78,9 @@ def jsonbin_save(data):
             json=data,
             timeout=10
         )
-    except:
-        pass
+        log(f"📤 JSONbin save: {r.status_code}")
+    except Exception as e:
+        log(f"❌ JSONbin save error: {e}")
 
 def load_points():
     global points_cache
@@ -101,6 +104,7 @@ def get_user_points(uid):
         if key not in points_cache:
             points_cache[key] = {
                 "points": 0,
+                "corrections_left": MAX_CORRECTIONS,
                 "last_active": datetime.now().isoformat(),
                 "likes_today": 0,
                 "comments_today": 0,
@@ -142,6 +146,7 @@ def add_points(uid, amount, action_type=None):
         global points_changed
         points_changed = True
         save_local()
+        log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
     return True
 
 def check_points_expiry(uid):
@@ -152,6 +157,7 @@ def check_points_expiry(uid):
             last_date = datetime.fromisoformat(last)
             if datetime.now() - last_date > timedelta(days=POINTS_EXPIRE_DAYS):
                 data[key]["points"] = 0
+                data[key]["corrections_left"] = MAX_CORRECTIONS
                 data[key]["last_active"] = datetime.now().isoformat()
                 global points_changed
                 points_changed = True
@@ -160,7 +166,6 @@ def check_points_expiry(uid):
     return False
 
 def sync_worker():
-    """Раз в 5 минут синхронизирует баллы с JSONbin если были изменения"""
     global points_changed
     while True:
         time.sleep(300)
@@ -273,12 +278,15 @@ def handle_message(user_id, text):
             kb["buttons"].append(row)
         kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
                               {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери марку:", keyboard=kb)
+        send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
     if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
-        user.premium_active = True
-        user.corrections_left = MAX_CORRECTIONS
+        data, key = get_user_points(user_id)
+        data[key]["corrections_left"] = MAX_CORRECTIONS
+        global points_changed
+        points_changed = True
+        save_local()
         user_states[user_id] = "AI_ASK_PHONE"
         send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         return
@@ -289,11 +297,9 @@ def handle_message(user_id, text):
         pts = data[key]["points"]
         if pts >= POINTS_PREMIUM:
             data[key]["points"] -= POINTS_PREMIUM
-            global points_changed
+            data[key]["corrections_left"] = MAX_CORRECTIONS
             points_changed = True
             save_local()
-            user.premium_active = True
-            user.corrections_left = MAX_CORRECTIONS
             user_states[user_id] = "AI_ASK_PHONE"
             send_message(user_id, f"✅ Премиум за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}", keyboard=back_and_menu_kb())
         else:
@@ -365,26 +371,32 @@ def handle_message(user_id, text):
     if state == "AI_ASK_PROBLEM":
         user.problem = t if t.lower() != "нет" else ""
         user_states[user_id] = "AI_DONE"
+        data, key = get_user_points(user_id)
         send_message(user_id, "🤖 ИИ подбирает настройки...")
         prompt = build_user_prompt(user)
         response = call_deepseek(prompt)
-        send_message(user_id, response + f"\n\n🔄 Корректировок: {user.corrections_left}")
+        send_message(user_id, response + f"\n\n🔄 Корректировок осталось: {data[key]['corrections_left']}")
         return
 
     if "корректировка" in t.lower():
-        if state == "AI_DONE" and user.corrections_left > 0:
+        data, key = get_user_points(user_id)
+        corr = data[key].get("corrections_left", 0)
+        if state == "AI_DONE" and corr > 0:
             user_states[user_id] = "CORRECTION"
-            send_message(user_id, "🔄 Опиши проблему.", keyboard=back_and_menu_kb())
+            send_message(user_id, f"🔄 Режим корректировки.\nОпиши проблему.\nОсталось: {corr}", keyboard=back_and_menu_kb())
             return
-        elif state == "CORRECTION" and user.corrections_left > 0:
-            user.corrections_left -= 1
+        elif state == "CORRECTION" and corr > 0:
+            data[key]["corrections_left"] = corr - 1
+            points_changed = True
+            save_local()
+            send_message(user_id, "🤖 ИИ пересчитывает...")
             prompt = build_correction_prompt(user, t)
             response = call_deepseek(prompt)
             user_states[user_id] = "AI_DONE"
-            send_message(user_id, response + f"\n\n🔄 Осталось: {user.corrections_left}")
+            send_message(user_id, response + f"\n\n🔄 Осталось корректировок: {data[key]['corrections_left']}")
             return
         else:
-            send_message(user_id, "❌ Лимит исчерпан.", keyboard=back_and_menu_kb())
+            send_message(user_id, "❌ Лимит корректировок исчерпан.", keyboard=back_and_menu_kb())
             return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
