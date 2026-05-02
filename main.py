@@ -202,6 +202,16 @@ def premium_inline_kb():
         ]
     }
 
+def premium_choice_kb():
+    return {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "💳 За 99₽"}, "color": "positive"},
+             {"action": {"type": "text", "label": "⭐ За 400 баллов"}, "color": "positive"}],
+            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+        ]
+    }
+
 def call_deepseek(prompt):
     if not DEEPSEEK_API_KEY:
         return "❌ ИИ не настроен."
@@ -265,11 +275,36 @@ def handle_message(user_id, text):
         return
 
     if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
+        send_message(user_id,
+            "🔥 ПРЕМИУМ НАСТРОЙКА\n\n"
+            "Что ты получишь:\n"
+            "✅ Персональные настройки под твой телефон\n"
+            "✅ Чувствительность под твой стиль игры\n"
+            "✅ HUD под твои пальцы и размер экрана\n"
+            "✅ Советы по тренировке под твоё оружие\n"
+            "✅ Рекомендации по охлаждению телефона\n"
+            "✅ 2 бесплатные корректировки\n\n"
+            "🎯 Не шаблон — ИИ подбирает лично под тебя!\n\n"
+            "👇 Выбери способ:",
+            keyboard=premium_choice_kb())
+        return
+
+    if t == "💳 За 99₽":
+        send_message(user_id, "💳 Оплата пока в разработке.\n\n⭐ Ты можешь получить премиум за 400 баллов — активничай в паблике!", keyboard=premium_choice_kb())
+        return
+
+    if t == "⭐ За 400 баллов":
         data, key = get_user_points(user_id)
-        data[key]["corrections_left"] = MAX_CORRECTIONS
-        save_points(data)
-        user_states[user_id] = "AI_ASK_PHONE"
-        send_message(user_id, "✅ Премиум активирован!\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
+        check_points_expiry(user_id)
+        pts = data[key]["points"]
+        if pts >= POINTS_PREMIUM:
+            data[key]["points"] -= POINTS_PREMIUM
+            data[key]["corrections_left"] = MAX_CORRECTIONS
+            save_points(data)
+            user_states[user_id] = "AI_ASK_PHONE"
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
+        else:
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}", keyboard=premium_choice_kb())
         return
 
     if t == "🔥 Обменять баллы":
@@ -281,7 +316,7 @@ def handle_message(user_id, text):
             data[key]["corrections_left"] = MAX_CORRECTIONS
             save_points(data)
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         else:
             send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}", keyboard=back_and_menu_kb())
         return
