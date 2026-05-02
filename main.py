@@ -274,7 +274,7 @@ def handle_message(user_id, text):
         send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
-    if t in ["🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "🔥 Хочу премиум"]:
+    if t == "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽":
         send_message(user_id,
             "🔥 ПРЕМИУМ НАСТРОЙКА\n\n"
             "Что ты получишь:\n"
@@ -318,7 +318,8 @@ def handle_message(user_id, text):
             user_states[user_id] = "AI_ASK_PHONE"
             send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         else:
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}", keyboard=back_and_menu_kb())
+            need = POINTS_PREMIUM - pts
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}", keyboard=back_and_menu_kb())
         return
 
     cat_map = {
@@ -459,7 +460,7 @@ def longpoll_loop():
                     if isinstance(payload, str): payload = json.loads(payload)
                     vk_api("messages.sendMessageEventAnswer", {"event_id": obj.get("event_id"), "user_id": uid, "peer_id": obj.get("peer_id")})
                     if payload.get("cmd") == "premium":
-                        threading.Thread(target=handle_message, args=(uid, "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽")).start()
+                        threading.Thread(target=handle_message, args=(uid, "🔥 Хочу премиум")).start()
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     if uid:
