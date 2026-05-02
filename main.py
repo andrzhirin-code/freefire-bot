@@ -30,6 +30,7 @@ MAX_COMMENTS_PER_DAY = 5
 
 points_data = {}
 points_lock = threading.Lock()
+points_changed = False
 
 def log(msg):
     with open("/tmp/bot.log", "a") as f:
@@ -64,17 +65,15 @@ def jsonbin_load():
         pass
     return {}
 
-def jsonbin_save_async(data):
-    def _save():
-        try:
-            requests.put(
-                f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
-                headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
-                json=data, timeout=10
-            )
-        except:
-            pass
-    threading.Thread(target=_save, daemon=True).start()
+def jsonbin_save(data):
+    try:
+        requests.put(
+            f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
+            headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
+            json=data, timeout=10
+        )
+    except:
+        pass
 
 def load_points():
     global points_data
@@ -88,12 +87,12 @@ def load_points():
     log(f"📂 Загружено пользователей: {len(points_data)}")
 
 def save_points(data):
-    global points_data
+    global points_data, points_changed
     with points_lock:
         points_data = data
         save_json(POINTS_FILE, data)
         save_json(POINTS_BACKUP, data)
-        jsonbin_save_async(data.copy())
+        points_changed = True
 
 def get_user_points(uid):
     key = str(uid)
@@ -148,6 +147,16 @@ def check_points_expiry(uid):
             save_points(data)
             return True
     return False
+
+def sync_worker():
+    global points_changed
+    while True:
+        time.sleep(300)
+        if points_changed:
+            with points_lock:
+                data = points_data.copy()
+            jsonbin_save(data)
+            points_changed = False
 
 def vk_api(method, params):
     params["v"] = "5.131"
@@ -469,4 +478,5 @@ if __name__ == "__main__":
     get_longpoll_server()
     threading.Thread(target=longpoll_loop, daemon=True).start()
     threading.Thread(target=keep_alive, daemon=True).start()
+    threading.Thread(target=sync_worker, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
