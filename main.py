@@ -60,39 +60,81 @@ def jsonbin_load():
             timeout=10
         )
         if r.status_code == 200:
-            return r.json().get("record", {})
-    except:
-        pass
-    return {}
+            data = r.json().get("record", {})
+            log(f"📥 JSONbin: {len(data)} пользователей")
+            return data
+    except Exception as e:
+        log(f"❌ JSONbin load: {e}")
+    return None
+
 
 def jsonbin_save(data):
+    if not data:
+        return
     try:
-        requests.put(
+        r = requests.put(
             f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
             headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
             json=data, timeout=10
         )
-    except:
-        pass
+        log(f"📤 JSONbin save: {r.status_code}")
+    except Exception as e:
+        log(f"❌ JSONbin save: {e}")
+
 
 def load_points():
     global points_data
-    data = jsonbin_load()
-    if not data:
-        data = load_json(POINTS_FILE, {})
-        if not data:
-            data = load_json(POINTS_BACKUP, {})
+    cloud = jsonbin_load()
+    local = load_json(POINTS_FILE, {})
+    backup = load_json(POINTS_BACKUP, {})
+
+    # Выбираем наиболее полный источник
+    if cloud:
+        points_data = cloud
+        log(f"📂 Облако: {len(cloud)} пользователей")
+    elif local:
+        points_data = local
+        log(f"📂 Локально: {len(local)} пользователей")
+    elif backup:
+        points_data = backup
+        log(f"📂 Бекап: {len(backup)} пользователей")
+    else:
+        points_data = {}
+        log("📂 Пусто")
+
+    # Объединяем локальные данные с облачными (максимум баллов)
+    if local and cloud:
+        merged = 0
+        for uid, ldata in local.items():
+            if uid in points_data:
+                old_pts = points_data[uid].get("points", 0)
+                new_pts = ldata.get("points", 0)
+                if new_pts > old_pts:
+                    points_data[uid] = ldata
+                    merged += 1
+            else:
+                points_data[uid] = ldata
+                merged += 1
+        if merged:
+            log(f"📂 Объединено: {merged} пользователей")
+            save_json(POINTS_FILE, points_data)
+            save_json(POINTS_BACKUP, points_data)
+            jsonbin_save(points_data)
+
     with points_lock:
-        points_data = data
-    log(f"📂 Загружено пользователей: {len(points_data)}")
+        pass  # points_data уже заполнен
+
 
 def save_points(data):
     global points_data, points_changed
+    if not data:
+        return
     with points_lock:
         points_data = data
         save_json(POINTS_FILE, data)
         save_json(POINTS_BACKUP, data)
         points_changed = True
+
 
 def get_user_points(uid):
     key = str(uid)
@@ -115,6 +157,7 @@ def get_user_points(uid):
             save_points(points_data)
     return points_data, key
 
+
 def add_points(uid, amount, action_type=None):
     data, key = get_user_points(uid)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -136,6 +179,7 @@ def add_points(uid, amount, action_type=None):
     log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
     return True
 
+
 def check_points_expiry(uid):
     data, key = get_user_points(uid)
     last = data[key].get("last_active")
@@ -148,15 +192,18 @@ def check_points_expiry(uid):
             return True
     return False
 
+
 def sync_worker():
     global points_changed
     while True:
         time.sleep(300)
         if points_changed:
             with points_lock:
-                data = points_data.copy()
-            jsonbin_save(data)
+                if points_data:
+                    data = points_data.copy()
+                    jsonbin_save(data)
             points_changed = False
+
 
 def vk_api(method, params):
     params["v"] = "5.131"
@@ -167,11 +214,13 @@ def vk_api(method, params):
         log(f"❌ VK API {method}: {result['error']['error_msg']}")
     return result
 
+
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
     return vk_api("messages.send", params)
+
 
 def send_menu(user_id):
     kb = {
@@ -185,6 +234,7 @@ def send_menu(user_id):
     }
     send_message(user_id, "🎮 Привет, боец!\n\n📱 БЕСПЛАТНЫЕ НАСТРОЙКИ — готовые конфиги\n🔥 ПРЕМИУМ — ИИ подбирает лично под тебя\n⭐ БАЛЛЫ — активничай и меняй на премиум\n🛒 МАГАЗИН — перейти в магазин", keyboard=kb)
 
+
 def back_and_menu_kb():
     return {
         "one_time": False,
@@ -194,6 +244,7 @@ def back_and_menu_kb():
         ]
     }
 
+
 def premium_inline_kb():
     return {
         "inline": True,
@@ -201,6 +252,7 @@ def premium_inline_kb():
             [{"action": {"type": "callback", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
         ]
     }
+
 
 def premium_choice_kb():
     return {
@@ -211,6 +263,7 @@ def premium_choice_kb():
             [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
         ]
     }
+
 
 def call_deepseek(prompt):
     if not DEEPSEEK_API_KEY:
@@ -226,6 +279,7 @@ def call_deepseek(prompt):
             return "❌ Ошибка ИИ."
     except:
         return "❌ Ошибка ИИ."
+
 
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
@@ -424,6 +478,7 @@ def handle_message(user_id, text):
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
 
+
 def get_longpoll_server():
     global longpoll_server, longpoll_key, longpoll_ts
     resp = vk_api("groups.getLongPollServer", {"group_id": GROUP_ID})
@@ -432,6 +487,7 @@ def get_longpoll_server():
         longpoll_key = resp["response"]["key"]
         longpoll_ts = resp["response"]["ts"]
         log(f"🔗 LongPoll подключён")
+
 
 def longpoll_loop():
     global longpoll_ts
@@ -484,6 +540,7 @@ def longpoll_loop():
         except:
             time.sleep(3)
 
+
 def keep_alive():
     while True:
         time.sleep(540)
@@ -492,13 +549,16 @@ def keep_alive():
         except:
             pass
 
+
 @app.route("/")
 def home():
     return "Bot is running"
 
+
 @app.route("/ping")
 def ping():
     return "ok"
+
 
 @app.route("/log")
 def show_log():
@@ -507,6 +567,7 @@ def show_log():
             return "<pre>" + f.read() + "</pre>"
     except:
         return "empty"
+
 
 if __name__ == "__main__":
     log("🤖 Бот запускается...")
