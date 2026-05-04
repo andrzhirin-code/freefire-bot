@@ -80,7 +80,6 @@ def jsonbin_save(data):
             headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
             json=data, timeout=10
         )
-        log(f"📤 JSONbin: {r.status_code}")
     except Exception as e:
         log(f"❌ JSONbin save: {e}")
 
@@ -92,16 +91,12 @@ def load_points():
 
     if cloud and len(cloud) > 0:
         points_data = cloud
-        log(f"📂 Облако: {len(cloud)} пользователей")
     elif local and len(local) > 0:
         points_data = local
-        log(f"📂 Локально: {len(local)} пользователей")
     elif backup and len(backup) > 0:
         points_data = backup
-        log(f"📂 Бекап: {len(backup)} пользователей")
     else:
         points_data = {}
-        log("📂 Пусто")
 
     if local and len(local) > 0:
         merged = 0
@@ -117,6 +112,7 @@ def load_points():
             log(f"📂 Объединено: {merged}")
     save_json(POINTS_FILE, points_data)
     save_json(POINTS_BACKUP, points_data)
+    log(f"📂 Загружено: {len(points_data)} пользователей")
 
 def save_points(data):
     global points_data, points_changed
@@ -547,7 +543,6 @@ def longpoll_loop():
                 continue
             longpoll_ts = resp.get("ts", longpoll_ts)
             for update in resp.get("updates", []):
-                log(f"📨 {update['type']}")
                 if update["type"] == "message_new":
                     msg = update["object"]["message"]
                     uid = msg.get("from_id")
