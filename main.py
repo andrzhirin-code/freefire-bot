@@ -14,6 +14,7 @@ from prompts import SYSTEM_PROMPT, build_user_prompt, build_correction_prompt
 app = Flask(__name__)
 user_states = {}
 last_category = {}
+user_pages = {}
 longpoll_server = None
 longpoll_key = None
 longpoll_ts = None
@@ -27,6 +28,8 @@ POINTS_PREMIUM = 400
 POINTS_EXPIRE_DAYS = 30
 MAX_LIKES_PER_DAY = 10
 MAX_COMMENTS_PER_DAY = 5
+
+PAGE_SIZE = 6
 
 points_data = {}
 points_lock = threading.Lock()
@@ -60,70 +63,51 @@ def jsonbin_load():
             timeout=10
         )
         if r.status_code == 200:
-            data = r.json().get("record", {})
-            log(f"📥 JSONbin: {len(data)} пользователей")
-            return data
-    except Exception as e:
-        log(f"❌ JSONbin load: {e}")
+            return r.json().get("record", {})
+    except:
+        pass
     return None
-
 
 def jsonbin_save(data):
     if not data:
         return
     try:
-        r = requests.put(
+        requests.put(
             f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
             headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
             json=data, timeout=10
         )
-        log(f"📤 JSONbin save: {r.status_code}")
-    except Exception as e:
-        log(f"❌ JSONbin save: {e}")
-
+    except:
+        pass
 
 def load_points():
     global points_data
     cloud = jsonbin_load()
     local = load_json(POINTS_FILE, {})
     backup = load_json(POINTS_BACKUP, {})
-
-    # Выбираем наиболее полный источник
     if cloud:
         points_data = cloud
-        log(f"📂 Облако: {len(cloud)} пользователей")
     elif local:
         points_data = local
-        log(f"📂 Локально: {len(local)} пользователей")
     elif backup:
         points_data = backup
-        log(f"📂 Бекап: {len(backup)} пользователей")
     else:
         points_data = {}
-        log("📂 Пусто")
-
-    # Объединяем локальные данные с облачными (максимум баллов)
     if local and cloud:
         merged = 0
         for uid, ldata in local.items():
             if uid in points_data:
-                old_pts = points_data[uid].get("points", 0)
-                new_pts = ldata.get("points", 0)
-                if new_pts > old_pts:
+                if ldata.get("points", 0) > points_data[uid].get("points", 0):
                     points_data[uid] = ldata
                     merged += 1
             else:
                 points_data[uid] = ldata
                 merged += 1
         if merged:
-            log(f"📂 Объединено: {merged} пользователей")
             save_json(POINTS_FILE, points_data)
             save_json(POINTS_BACKUP, points_data)
             jsonbin_save(points_data)
-
-    with points_lock:
-        pass  # points_data уже заполнен
-
+    log(f"📂 Загружено: {len(points_data)} пользователей")
 
 def save_points(data):
     global points_data, points_changed
@@ -134,7 +118,6 @@ def save_points(data):
         save_json(POINTS_FILE, data)
         save_json(POINTS_BACKUP, data)
         points_changed = True
-
 
 def get_user_points(uid):
     key = str(uid)
@@ -157,7 +140,6 @@ def get_user_points(uid):
             save_points(points_data)
     return points_data, key
 
-
 def add_points(uid, amount, action_type=None):
     data, key = get_user_points(uid)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -179,7 +161,6 @@ def add_points(uid, amount, action_type=None):
     log(f"⭐ {'+' if amount > 0 else ''}{amount} баллов пользователю {uid} (всего: {data[key]['points']}) [{action_type}]")
     return True
 
-
 def check_points_expiry(uid):
     data, key = get_user_points(uid)
     last = data[key].get("last_active")
@@ -192,7 +173,6 @@ def check_points_expiry(uid):
             return True
     return False
 
-
 def sync_worker():
     global points_changed
     while True:
@@ -204,7 +184,6 @@ def sync_worker():
                     jsonbin_save(data)
             points_changed = False
 
-
 def vk_api(method, params):
     params["v"] = "5.131"
     params["access_token"] = VK_TOKEN
@@ -214,13 +193,11 @@ def vk_api(method, params):
         log(f"❌ VK API {method}: {result['error']['error_msg']}")
     return result
 
-
 def send_message(user_id, text, keyboard=None):
     params = {"user_id": user_id, "message": text, "random_id": 0}
     if keyboard:
         params["keyboard"] = json.dumps(keyboard)
     return vk_api("messages.send", params)
-
 
 def send_menu(user_id):
     kb = {
@@ -234,7 +211,6 @@ def send_menu(user_id):
     }
     send_message(user_id, "🎮 Привет, боец!\n\n📱 БЕСПЛАТНЫЕ НАСТРОЙКИ — готовые конфиги\n🔥 ПРЕМИУМ — ИИ подбирает лично под тебя\n⭐ БАЛЛЫ — активничай и меняй на премиум\n🛒 МАГАЗИН — перейти в магазин", keyboard=kb)
 
-
 def back_and_menu_kb():
     return {
         "one_time": False,
@@ -244,7 +220,6 @@ def back_and_menu_kb():
         ]
     }
 
-
 def premium_inline_kb():
     return {
         "inline": True,
@@ -252,7 +227,6 @@ def premium_inline_kb():
             [{"action": {"type": "callback", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
         ]
     }
-
 
 def premium_choice_kb():
     return {
@@ -263,7 +237,6 @@ def premium_choice_kb():
             [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
         ]
     }
-
 
 def call_deepseek(prompt):
     if not DEEPSEEK_API_KEY:
@@ -280,7 +253,6 @@ def call_deepseek(prompt):
     except:
         return "❌ Ошибка ИИ."
 
-
 def handle_message(user_id, text):
     log(f"💬 user={user_id} text={text}")
     user = get_user(user_id)
@@ -289,6 +261,7 @@ def handle_message(user_id, text):
 
     if t.lower() in ["меню", "начать", "старт", "start"]:
         user_states[user_id] = "MENU"
+        user_pages.pop(user_id, None)
         send_menu(user_id)
         return
 
@@ -387,23 +360,47 @@ def handle_message(user_id, text):
 
     if t in cat_map:
         phones = cat_map[t]
-        last_category[user_id] = phones
-        kb = {"one_time": False, "buttons": []}
-        row = []
-        for phone in phones:
-            row.append({"action": {"type": "text", "label": phone.title()}, "color": "primary"})
-            if len(row) == 2:
-                kb["buttons"].append(row)
-                row = []
-        if row:
-            kb["buttons"].append(row)
-        kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-                              {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
-        send_message(user_id, "📱 Выбери модель:", keyboard=kb)
+        user_pages[user_id] = {"phones": phones, "page": 0}
+        show_models_page(user_id)
         return
 
-    if t in ["← Назад", "🏠 В меню"]:
+    if t == "Вперёд →":
+        show_models_page(user_id, 1)
+        return
+    if t == "← Назад":
+        data = user_pages.get(user_id)
+        if data:
+            show_models_page(user_id, -1)
+        else:
+            user_states[user_id] = "FREE_PHONES"
+            brands = ["Xiaomi/Redmi/Poco", "Samsung", "iPhone", "Realme", "Tecno/Infinix", "Другие"]
+            kb = {"one_time": False, "buttons": []}
+            row = []
+            for b in brands:
+                row.append({"action": {"type": "text", "label": b}, "color": "primary"})
+                if len(row) == 2:
+                    kb["buttons"].append(row)
+                    row = []
+            if row:
+                kb["buttons"].append(row)
+            kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+                                  {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
+            send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
+        return
+
+    if t == "📱 Нет моей модели":
+        send_message(user_id,
+            "📱 Не нашёл свою модель?\n\n"
+            "Напиши её в нашем обсуждении:\n"
+            "👉 https://vk.com/topic-193012947_49780771\n\n"
+            "Мы добавим её в бота! 🔧\n\n"
+            "А пока можешь получить персональную настройку через 🔥 Премиум — ИИ подберёт под любой телефон!",
+            keyboard=back_and_menu_kb())
+        return
+
+    if t in ["🏠 В меню"]:
         user_states[user_id] = "MENU"
+        user_pages.pop(user_id, None)
         send_menu(user_id)
         return
 
@@ -479,6 +476,47 @@ def handle_message(user_id, text):
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».")
 
 
+def show_models_page(user_id, direction=0):
+    data = user_pages.get(user_id)
+    if not data:
+        return
+    phones = data["phones"]
+    page = data["page"] + direction
+    if page < 0:
+        page = 0
+    total_pages = (len(phones) - 1) // PAGE_SIZE
+    if page > total_pages:
+        page = total_pages
+    data["page"] = page
+    user_pages[user_id] = data
+
+    start = page * PAGE_SIZE
+    end = start + PAGE_SIZE
+    page_phones = phones[start:end]
+
+    kb = {"one_time": False, "buttons": []}
+    row = []
+    for phone in page_phones:
+        row.append({"action": {"type": "text", "label": phone.title()}, "color": "primary"})
+        if len(row) == 2:
+            kb["buttons"].append(row)
+            row = []
+    if row:
+        kb["buttons"].append(row)
+
+    nav_row = [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+               {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}]
+    if page > 0 and page < total_pages:
+        nav_row.insert(1, {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"})
+    elif page < total_pages:
+        nav_row.insert(1, {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"})
+    if page == total_pages:
+        kb["buttons"].append([{"action": {"type": "text", "label": "📱 Нет моей модели"}, "color": "secondary"}])
+    kb["buttons"].append(nav_row)
+
+    send_message(user_id, f"📱 Выбери модель (стр. {page+1}/{total_pages+1}):", keyboard=kb)
+
+
 def get_longpoll_server():
     global longpoll_server, longpoll_key, longpoll_ts
     resp = vk_api("groups.getLongPollServer", {"group_id": GROUP_ID})
@@ -487,7 +525,6 @@ def get_longpoll_server():
         longpoll_key = resp["response"]["key"]
         longpoll_ts = resp["response"]["ts"]
         log(f"🔗 LongPoll подключён")
-
 
 def longpoll_loop():
     global longpoll_ts
@@ -540,7 +577,6 @@ def longpoll_loop():
         except:
             time.sleep(3)
 
-
 def keep_alive():
     while True:
         time.sleep(540)
@@ -549,16 +585,13 @@ def keep_alive():
         except:
             pass
 
-
 @app.route("/")
 def home():
     return "Bot is running"
 
-
 @app.route("/ping")
 def ping():
     return "ok"
-
 
 @app.route("/log")
 def show_log():
@@ -567,7 +600,6 @@ def show_log():
             return "<pre>" + f.read() + "</pre>"
     except:
         return "empty"
-
 
 if __name__ == "__main__":
     log("🤖 Бот запускается...")
