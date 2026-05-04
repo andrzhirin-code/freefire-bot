@@ -547,7 +547,7 @@ def longpoll_loop():
                 continue
             longpoll_ts = resp.get("ts", longpoll_ts)
             for update in resp.get("updates", []):
-                log(f"📨 {update['type']}: {json.dumps(update.get('object', {}))}")
+                log(f"📨 {update['type']}")
                 if update["type"] == "message_new":
                     msg = update["object"]["message"]
                     uid = msg.get("from_id")
@@ -569,14 +569,14 @@ def longpoll_loop():
                         if uid < 0: uid = abs(uid)
                         add_points(uid, POINTS_LIKE, "like")
                 elif update["type"] == "like_remove":
-                    pass  # Не снимаем баллы за дизлайк
+                    pass
                 elif update["type"] == "wall_reply_new":
                     uid = update["object"].get("from_id", 0)
                     if uid:
                         if uid < 0: uid = abs(uid)
                         add_points(uid, POINTS_COMMENT, "comment")
                 elif update["type"] == "wall_reply_delete":
-                    pass  # Не снимаем баллы за удаление комментария
+                    pass
         except:
             time.sleep(3)
 
