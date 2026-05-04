@@ -63,37 +63,47 @@ def jsonbin_load():
             timeout=10
         )
         if r.status_code == 200:
-            return r.json().get("record", {})
-    except:
-        pass
+            data = r.json().get("record", {})
+            if data and len(data) > 0:
+                log(f"📥 JSONbin: {len(data)} пользователей")
+                return data
+    except Exception as e:
+        log(f"❌ JSONbin load: {e}")
     return None
 
 def jsonbin_save(data):
-    if not data:
+    if not data or len(data) == 0:
         return
     try:
-        requests.put(
+        r = requests.put(
             f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
             headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
             json=data, timeout=10
         )
-    except:
-        pass
+        log(f"📤 JSONbin: {r.status_code}")
+    except Exception as e:
+        log(f"❌ JSONbin save: {e}")
 
 def load_points():
     global points_data
     cloud = jsonbin_load()
     local = load_json(POINTS_FILE, {})
     backup = load_json(POINTS_BACKUP, {})
-    if cloud:
+
+    if cloud and len(cloud) > 0:
         points_data = cloud
-    elif local:
+        log(f"📂 Облако: {len(cloud)} пользователей")
+    elif local and len(local) > 0:
         points_data = local
-    elif backup:
+        log(f"📂 Локально: {len(local)} пользователей")
+    elif backup and len(backup) > 0:
         points_data = backup
+        log(f"📂 Бекап: {len(backup)} пользователей")
     else:
         points_data = {}
-    if local and cloud:
+        log("📂 Пусто")
+
+    if local and len(local) > 0:
         merged = 0
         for uid, ldata in local.items():
             if uid in points_data:
@@ -104,14 +114,13 @@ def load_points():
                 points_data[uid] = ldata
                 merged += 1
         if merged:
-            save_json(POINTS_FILE, points_data)
-            save_json(POINTS_BACKUP, points_data)
-            jsonbin_save(points_data)
-    log(f"📂 Загружено: {len(points_data)} пользователей")
+            log(f"📂 Объединено: {merged}")
+    save_json(POINTS_FILE, points_data)
+    save_json(POINTS_BACKUP, points_data)
 
 def save_points(data):
     global points_data, points_changed
-    if not data:
+    if not data or len(data) == 0:
         return
     with points_lock:
         points_data = data
@@ -179,7 +188,7 @@ def sync_worker():
         time.sleep(300)
         if points_changed:
             with points_lock:
-                if points_data:
+                if points_data and len(points_data) > 0:
                     data = points_data.copy()
                     jsonbin_save(data)
             points_changed = False
@@ -392,7 +401,7 @@ def handle_message(user_id, text):
         send_message(user_id,
             "📱 Не нашёл свою модель?\n\n"
             "Напиши её в нашем обсуждении:\n"
-            "👉 https://vk.com/topic-193012947_49780771\n\n"
+            "👉 https://vk.com/topic-193012947_12345678\n\n"
             "Мы добавим её в бота! 🔧\n\n"
             "А пока можешь получить персональную настройку через 🔥 Премиум — ИИ подберёт под любой телефон!",
             keyboard=back_and_menu_kb())
@@ -504,14 +513,13 @@ def show_models_page(user_id, direction=0):
     if row:
         kb["buttons"].append(row)
 
+    if page == total_pages:
+        kb["buttons"].append([{"action": {"type": "text", "label": "📱 Нет моей модели"}, "color": "negative"}])
+
     nav_row = [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
                {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}]
-    if page > 0 and page < total_pages:
+    if page < total_pages:
         nav_row.insert(1, {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"})
-    elif page < total_pages:
-        nav_row.insert(1, {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"})
-    if page == total_pages:
-        kb["buttons"].append([{"action": {"type": "text", "label": "📱 Нет моей модели"}, "color": "secondary"}])
     kb["buttons"].append(nav_row)
 
     send_message(user_id, f"📱 Выбери модель (стр. {page+1}/{total_pages+1}):", keyboard=kb)
