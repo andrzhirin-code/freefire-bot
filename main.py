@@ -401,7 +401,7 @@ def handle_message(user_id, text):
         send_message(user_id,
             "📱 Не нашёл свою модель?\n\n"
             "Напиши её в нашем обсуждении:\n"
-            "👉 https://vk.com/topic-193012947_49780771\n\n"
+            "👉 https://vk.com/topic-193012947_12345678\n\n"
             "Мы добавим её в бота! 🔧\n\n"
             "А пока можешь получить персональную настройку через 🔥 Премиум — ИИ подберёт под любой телефон!",
             keyboard=back_and_menu_kb())
@@ -568,20 +568,14 @@ def longpoll_loop():
                         if uid < 0: uid = abs(uid)
                         add_points(uid, POINTS_LIKE, "like")
                 elif update["type"] == "like_remove":
-                    uid = update["object"].get("liker_id", 0)
-                    if uid:
-                        if uid < 0: uid = abs(uid)
-                        add_points(uid, -POINTS_LIKE, "like")
+                    pass  # Не снимаем баллы за дизлайк
                 elif update["type"] == "wall_reply_new":
                     uid = update["object"].get("from_id", 0)
                     if uid:
                         if uid < 0: uid = abs(uid)
                         add_points(uid, POINTS_COMMENT, "comment")
                 elif update["type"] == "wall_reply_delete":
-                    uid = update["object"].get("from_id", 0)
-                    if uid:
-                        if uid < 0: uid = abs(uid)
-                        add_points(uid, -POINTS_COMMENT, "comment")
+                    pass  # Не снимаем баллы за удаление комментария
         except:
             time.sleep(3)
 
