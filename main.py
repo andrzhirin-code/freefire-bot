@@ -547,6 +547,7 @@ def longpoll_loop():
                 continue
             longpoll_ts = resp.get("ts", longpoll_ts)
             for update in resp.get("updates", []):
+                log(f"📨 {update['type']}: {json.dumps(update.get('object', {}))}")
                 if update["type"] == "message_new":
                     msg = update["object"]["message"]
                     uid = msg.get("from_id")
