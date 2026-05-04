@@ -476,7 +476,7 @@ def handle_message(user_id, text):
         send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
         return
 
-    send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».", keyboard=back_and_menu_kb())
+    send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».")
 
 
 def get_longpoll_server():
