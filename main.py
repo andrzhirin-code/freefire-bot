@@ -315,8 +315,7 @@ def handle_message(user_id, text, ref=None):
             "buttons": [
                 [{"action": {"type": "text", "label": "🔥 Обменять баллы"}, "color": "positive"}],
                 [{"action": {"type": "text", "label": "🔗 Моя реферальная ссылка"}, "color": "primary"}],
-                [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-                 {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+                [{"action": {"type": "text", "label": "← Назад в меню 🏠"}, "color": "secondary"}],
             ]
         }
         info = (
