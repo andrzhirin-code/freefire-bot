@@ -25,6 +25,8 @@ POINTS_BACKUP = "/opt/render/project/src/points_backup.json"
 POINTS_LIKE = 5
 POINTS_COMMENT = 10
 POINTS_PREMIUM = 400
+POINTS_REFERRER = 50
+POINTS_REFERRAL = 25
 POINTS_EXPIRE_DAYS = 30
 MAX_LIKES_PER_DAY = 10
 MAX_COMMENTS_PER_DAY = 5
@@ -65,23 +67,22 @@ def jsonbin_load():
         if r.status_code == 200:
             data = r.json().get("record", {})
             if data and len(data) > 0:
-                log(f"📥 JSONbin: {len(data)} пользователей")
                 return data
-    except Exception as e:
-        log(f"❌ JSONbin load: {e}")
+    except:
+        pass
     return None
 
 def jsonbin_save(data):
     if not data or len(data) == 0:
         return
     try:
-        r = requests.put(
+        requests.put(
             f"https://api.jsonbin.io/v3/b/{JSONBIN_ID}",
             headers={"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"},
             json=data, timeout=10
         )
-    except Exception as e:
-        log(f"❌ JSONbin save: {e}")
+    except:
+        pass
 
 def load_points():
     global points_data
@@ -133,7 +134,8 @@ def get_user_points(uid):
             "last_active": datetime.now().isoformat(),
             "likes_today": 0,
             "comments_today": 0,
-            "day": datetime.now().strftime("%Y-%m-%d")
+            "day": datetime.now().strftime("%Y-%m-%d"),
+            "invited_by": None
         }
         save_points(points_data)
     else:
@@ -258,11 +260,26 @@ def call_deepseek(prompt):
     except:
         return "❌ Ошибка ИИ."
 
-def handle_message(user_id, text):
-    log(f"💬 user={user_id} text={text}")
+def handle_message(user_id, text, referral=None):
+    log(f"💬 user={user_id} text={text} ref={referral}")
     user = get_user(user_id)
     state = user_states.get(user_id, "MENU")
     t = text.strip()
+
+    # Проверка реферала (первое сообщение)
+    if referral:
+        try:
+            ref_id = int(referral)
+            data, key = get_user_points(user_id)
+            data_ref, key_ref = get_user_points(ref_id)
+            if ref_id != user_id and not data[key].get("invited_by"):
+                data[key]["invited_by"] = ref_id
+                save_points(data)
+                add_points(ref_id, POINTS_REFERRER, "referral")
+                add_points(user_id, POINTS_REFERRAL, "referral_bonus")
+                send_message(user_id, f"🎉 Ты пришёл по реферальной ссылке!\n+{POINTS_REFERRAL} баллов тебе, +{POINTS_REFERRER} баллов другу!")
+        except:
+            pass
 
     if t.lower() in ["меню", "начать", "старт", "start"]:
         user_states[user_id] = "MENU"
@@ -279,6 +296,7 @@ def handle_message(user_id, text):
             "one_time": False,
             "buttons": [
                 [{"action": {"type": "text", "label": "🔥 Обменять баллы"}, "color": "positive"}],
+                [{"action": {"type": "text", "label": "🔗 Моя ссылка"}, "color": "primary"}],
                 [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
                  {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
             ]
@@ -287,6 +305,17 @@ def handle_message(user_id, text):
             send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}", keyboard=kb)
         else:
             send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}", keyboard=kb)
+        return
+
+    if t == "🔗 Моя ссылка":
+        send_message(user_id,
+            f"🔗 Твоя реферальная ссылка:\n\n"
+            f"👉 https://vk.com/write-{GROUP_ID}?ref={user_id}\n\n"
+            f"Отправь её другу! Когда он впервые напишет боту:\n"
+            f"✅ Ты получишь +{POINTS_REFERRER} баллов\n"
+            f"✅ Друг получит +{POINTS_REFERRAL} баллов\n\n"
+            f"📌 Ссылка работает только для новых пользователей!",
+            keyboard=back_and_menu_kb())
         return
 
     if t == "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ":
@@ -547,9 +576,10 @@ def longpoll_loop():
                     msg = update["object"]["message"]
                     uid = msg.get("from_id")
                     txt = msg.get("text", "")
+                    ref = msg.get("referral")
                     if uid and uid < 0: uid = abs(uid)
                     if uid and txt:
-                        threading.Thread(target=handle_message, args=(uid, txt)).start()
+                        threading.Thread(target=handle_message, args=(uid, txt, ref)).start()
                 elif update["type"] == "message_event":
                     obj = update["object"]
                     uid = obj.get("user_id")
@@ -557,7 +587,7 @@ def longpoll_loop():
                     if isinstance(payload, str): payload = json.loads(payload)
                     vk_api("messages.sendMessageEventAnswer", {"event_id": obj.get("event_id"), "user_id": uid, "peer_id": obj.get("peer_id")})
                     if payload.get("cmd") == "premium":
-                        threading.Thread(target=handle_message, args=(uid, "🔥 Хочу премиум")).start()
+                        threading.Thread(target=handle_message, args=(uid, "🔥 Хочу премиум", None)).start()
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     if uid:
