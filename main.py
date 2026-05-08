@@ -320,15 +320,15 @@ def handle_message(user_id, text, ref=None):
             ]
         }
         info = (
-            f"📊 Как копить баллы:\n"
-            f"👍 Лайк: +{POINTS_LIKE} (макс {MAX_LIKES_PER_DAY}/день)\n"
-            f"💬 Комментарий: +{POINTS_COMMENT} (макс {MAX_COMMENTS_PER_DAY}/день)\n"
-            f"🔗 Реферал: +{POINTS_REFERRER} тебе, +{POINTS_REFERRAL} другу\n\n"
+            f"📊 Как заработать баллы:\n"
+            f"❤ Лайкай записи — +{POINTS_LIKE} балла за лайк (до {MAX_LIKES_PER_DAY} лайков в день)\n"
+            f"💬 Пиши комменты — +{POINTS_COMMENT} баллов за коммент (до {MAX_COMMENTS_PER_DAY} комментариев в день)\n"
+            f"🔗 Приглашай друзей по ссылке — +{POINTS_REFERRER} тебе и +{POINTS_REFERRAL} им\n\n"
         )
         if expired:
-            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n{info}", keyboard=kb)
+            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n\n{info}", keyboard=kb)
         else:
-            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n{info}", keyboard=kb)
+            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Набери {POINTS_PREMIUM} и обменяй на 🔥 Премиум Настройку!\n📊 Не хватает: {need}\n\n{info}", keyboard=kb)
         return
 
     if t == "🔗 Моя реферальная ссылка":
