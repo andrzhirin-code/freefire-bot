@@ -293,8 +293,8 @@ def handle_message(user_id, text, ref=None):
             data[key]["corrections_left"] = 0
             save_points(data)
             user_states[user_id] = "MENU"
-            send_message(user_id, f"❌ Премиум-опрос отменён. {POINTS_PREMIUM} баллов возвращены.", keyboard=send_menu_keyboard())
             send_menu(user_id)
+            send_message(user_id, f"❌ Премиум-опрос отменён. {POINTS_PREMIUM} баллов возвращены.")
         else:
             send_message(user_id, "⚠️ Ты не завершил премиум-опрос! Пройди все 7 вопросов или напиши «отмена» чтобы выйти и вернуть баллы.", keyboard=back_to_question_kb())
         return
@@ -424,7 +424,7 @@ def handle_message(user_id, text, ref=None):
     if t == "Вперёд →":
         show_models_page(user_id, 1)
         return
-    if t == "← Назад":
+    if t in ["← Назад", "🏠 В меню", "← Назад в Меню 🏠"]:
         data = user_pages.get(user_id)
         if data:
             show_models_page(user_id, -1)
