@@ -339,7 +339,7 @@ def handle_message(user_id, text, ref=None):
             f"✅ Ты получишь +{POINTS_REFERRER} баллов\n"
             f"✅ Друг получит +{POINTS_REFERRAL} баллов\n\n"
             f"📌 Ссылка работает только для новых пользователей!",
-            keyboard=back_and_menu_kb())
+            keyboard=None)
         return
 
     if t == "📱 БЕСПЛАТНЫЕ НАСТРОЙКИ":
