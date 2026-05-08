@@ -261,7 +261,7 @@ def call_deepseek(prompt):
         return "❌ Ошибка ИИ."
 
 def handle_message(user_id, text, ref=None):
-    log(f"💬 user={user_id} text={text} ref={ref}")
+    log(f"💬 user={user_id} text={text}")
     user = get_user(user_id)
     state = user_states.get(user_id, "MENU")
     t = text.strip()
