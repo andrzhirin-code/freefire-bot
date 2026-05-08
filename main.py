@@ -415,9 +415,10 @@ def handle_message(user_id, text, ref=None):
 
     if t == "← Назад":
         data = user_pages.get(user_id)
-        if data:
+        if data and data["page"] > 0:
             show_models_page(user_id, -1)
         else:
+            user_pages.pop(user_id, None)
             user_states[user_id] = "FREE_PHONES"
             brands = ["Xiaomi/Redmi/Poco", "Samsung", "iPhone", "Realme", "Tecno/Infinix", "Другие"]
             kb = {"one_time": False, "buttons": []}
