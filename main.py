@@ -226,14 +226,6 @@ def back_to_question_kb():
         ]
     }
 
-def menu_only_kb():
-    return {
-        "one_time": False,
-        "buttons": [
-            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
-        ]
-    }
-
 def premium_inline_kb():
     return {
         "inline": True,
@@ -419,6 +411,26 @@ def handle_message(user_id, text, ref=None):
 
     if t == "Вперёд →":
         show_models_page(user_id, 1)
+        return
+
+    if t == "← Назад":
+        data = user_pages.get(user_id)
+        if data:
+            show_models_page(user_id, -1)
+        else:
+            user_states[user_id] = "FREE_PHONES"
+            brands = ["Xiaomi/Redmi/Poco", "Samsung", "iPhone", "Realme", "Tecno/Infinix", "Другие"]
+            kb = {"one_time": False, "buttons": []}
+            row = []
+            for b in brands:
+                row.append({"action": {"type": "text", "label": b}, "color": "primary"})
+                if len(row) == 2:
+                    kb["buttons"].append(row)
+                    row = []
+            if row:
+                kb["buttons"].append(row)
+            kb["buttons"].append([{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}])
+            send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
     if t == "🏠 В меню":
