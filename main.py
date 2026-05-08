@@ -227,6 +227,14 @@ def back_and_menu_kb():
         ]
     }
 
+def back_to_question_kb():
+    return {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "↩ Вернуться к вопросу"}, "color": "secondary"}],
+        ]
+    }
+
 def premium_inline_kb():
     return {
         "inline": True,
@@ -276,6 +284,20 @@ def handle_message(user_id, text, ref=None):
             add_points(ref_id, POINTS_REFERRER, "referral")
             add_points(user_id, POINTS_REFERRAL, "referral_bonus")
             send_message(user_id, f"🎉 Ты пришёл по реферальной ссылке!\n+{POINTS_REFERRAL} баллов тебе, +{POINTS_REFERRER} баллов другу!")
+
+    # Защита от выхода из премиум-опроса
+    if state and state.startswith("AI_") and t.lower() in ["меню", "начать", "старт", "start", "отмена"]:
+        if t.lower() == "отмена":
+            data, key = get_user_points(user_id)
+            data[key]["points"] += POINTS_PREMIUM
+            data[key]["corrections_left"] = 0
+            save_points(data)
+            user_states[user_id] = "MENU"
+            send_message(user_id, f"❌ Премиум-опрос отменён. {POINTS_PREMIUM} баллов возвращены.", keyboard=send_menu_keyboard())
+            send_menu(user_id)
+        else:
+            send_message(user_id, "⚠️ Ты не завершил премиум-опрос! Пройди все 7 вопросов или напиши «отмена» чтобы выйти и вернуть баллы.", keyboard=back_to_question_kb())
+        return
 
     if t.lower() in ["меню", "начать", "старт", "start"]:
         user_states[user_id] = "MENU"
@@ -365,9 +387,9 @@ def handle_message(user_id, text, ref=None):
             data[key]["corrections_left"] = MAX_CORRECTIONS
             save_points(data)
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_to_question_kb())
         else:
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}")
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}", keyboard=premium_choice_kb())
         return
 
     if t == "🔥 Обменять баллы":
@@ -379,7 +401,7 @@ def handle_message(user_id, text, ref=None):
             data[key]["corrections_left"] = MAX_CORRECTIONS
             save_points(data)
             user_states[user_id] = "AI_ASK_PHONE"
-            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
+            send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_to_question_kb())
         else:
             need = POINTS_PREMIUM - pts
             send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}")
@@ -449,27 +471,27 @@ def handle_message(user_id, text, ref=None):
 
     if state == "AI_ASK_PHONE":
         user.phone = t; user_states[user_id] = "AI_ASK_RAM"
-        send_message(user_id, "📱 Вопрос 2 из 7:\nСколько ОЗУ?", keyboard=back_and_menu_kb())
+        send_message(user_id, "📱 Вопрос 2 из 7:\nСколько ОЗУ?", keyboard=back_to_question_kb())
         return
     if state == "AI_ASK_RAM":
         user.ram = t; user_states[user_id] = "AI_ASK_STYLE"
-        send_message(user_id, "🎮 Вопрос 3 из 7:\nСтиль игры?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🎮 Вопрос 3 из 7:\nСтиль игры?", keyboard=back_to_question_kb())
         return
     if state == "AI_ASK_STYLE":
         user.style = t; user_states[user_id] = "AI_ASK_WEAPON"
-        send_message(user_id, "🔫 Вопрос 4 из 7:\nОружие?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔫 Вопрос 4 из 7:\nОружие?", keyboard=back_to_question_kb())
         return
     if state == "AI_ASK_WEAPON":
         user.weapon = t; user_states[user_id] = "AI_ASK_FINGERS"
-        send_message(user_id, "🤟 Вопрос 5 из 7:\nСколько пальцев?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🤟 Вопрос 5 из 7:\nСколько пальцев?", keyboard=back_to_question_kb())
         return
     if state == "AI_ASK_FINGERS":
         user.fingers = t; user_states[user_id] = "AI_ASK_GYRO"
-        send_message(user_id, "📳 Вопрос 6 из 7:\nГироскоп?", keyboard=back_and_menu_kb())
+        send_message(user_id, "📳 Вопрос 6 из 7:\nГироскоп?", keyboard=back_to_question_kb())
         return
     if state == "AI_ASK_GYRO":
         user.gyro = t; user_states[user_id] = "AI_ASK_PROBLEM"
-        send_message(user_id, "🔧 Вопрос 7 из 7:\nПроблема?", keyboard=back_and_menu_kb())
+        send_message(user_id, "🔧 Вопрос 7 из 7:\nПроблема?", keyboard=back_to_question_kb())
         return
     if state == "AI_ASK_PROBLEM":
         user.problem = t if t.lower() != "нет" else ""
