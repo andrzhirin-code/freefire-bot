@@ -382,7 +382,7 @@ def handle_message(user_id, text, ref=None):
             send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_and_menu_kb())
         else:
             need = POINTS_PREMIUM - pts
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}\nНе хватает: {need}")
         return
 
     cat_map = {
