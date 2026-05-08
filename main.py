@@ -274,7 +274,6 @@ def handle_message(user_id, text, ref=None):
     state = user_states.get(user_id, "MENU")
     t = text.strip()
 
-    # Проверка реферала (первое сообщение)
     if ref and str(ref).isdigit():
         ref_id = int(ref)
         data, key = get_user_points(user_id)
@@ -285,7 +284,6 @@ def handle_message(user_id, text, ref=None):
             add_points(user_id, POINTS_REFERRAL, "referral_bonus")
             send_message(user_id, f"🎉 Ты пришёл по реферальной ссылке!\n+{POINTS_REFERRAL} баллов тебе, +{POINTS_REFERRER} баллов другу!")
 
-    # Защита от выхода из премиум-опроса
     if state and state.startswith("AI_") and t.lower() in ["меню", "начать", "старт", "start", "отмена"]:
         if t.lower() == "отмена":
             data, key = get_user_points(user_id)
@@ -315,7 +313,7 @@ def handle_message(user_id, text, ref=None):
             "buttons": [
                 [{"action": {"type": "text", "label": "🔥 Обменять баллы"}, "color": "positive"}],
                 [{"action": {"type": "text", "label": "🔗 Моя реферальная ссылка"}, "color": "primary"}],
-                [{"action": {"type": "text", "label": "← Назад в Меню 🏠"}, "color": "secondary"}],
+                [{"action": {"type": "text", "label": "← Назад в меню 🏠"}, "color": "secondary"}],
             ]
         }
         info = (
@@ -424,25 +422,11 @@ def handle_message(user_id, text, ref=None):
     if t == "Вперёд →":
         show_models_page(user_id, 1)
         return
-    if t in ["← Назад", "🏠 В меню", "← Назад в Меню 🏠"]:
-        data = user_pages.get(user_id)
-        if data:
-            show_models_page(user_id, -1)
-        else:
-            user_states[user_id] = "FREE_PHONES"
-            brands = ["Xiaomi/Redmi/Poco", "Samsung", "iPhone", "Realme", "Tecno/Infinix", "Другие"]
-            kb = {"one_time": False, "buttons": []}
-            row = []
-            for b in brands:
-                row.append({"action": {"type": "text", "label": b}, "color": "primary"})
-                if len(row) == 2:
-                    kb["buttons"].append(row)
-                    row = []
-            if row:
-                kb["buttons"].append(row)
-            kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-                                  {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
-            send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
+
+    if t in ["← Назад", "🏠 В меню", "← Назад в меню 🏠"]:
+        user_states[user_id] = "MENU"
+        user_pages.pop(user_id, None)
+        send_menu(user_id)
         return
 
     if t == "📱 Нет моей модели":
@@ -453,12 +437,6 @@ def handle_message(user_id, text, ref=None):
             "Мы добавим её в бота! 🔧\n\n"
             "А пока можешь получить персональную настройку через 🔥 Премиум — ИИ подберёт под любой телефон!",
             keyboard=back_and_menu_kb())
-        return
-
-    if t in ["🏠 В меню"]:
-        user_states[user_id] = "MENU"
-        user_pages.pop(user_id, None)
-        send_menu(user_id)
         return
 
     phone = find_phone(t)
