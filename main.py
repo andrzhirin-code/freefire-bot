@@ -310,7 +310,7 @@ def handle_message(user_id, text, referral=None):
     if t == "🔗 Моя ссылка":
         send_message(user_id,
             f"🔗 Твоя реферальная ссылка:\n\n"
-            f"👉 https://vk.com/write-{GROUP_ID}?ref={user_id}\n\n"
+            f"👉 https://vk.com/write-{GROUP_ID}?referrer={user_id}\n\n"
             f"Отправь её другу! Когда он впервые напишет боту:\n"
             f"✅ Ты получишь +{POINTS_REFERRER} баллов\n"
             f"✅ Друг получит +{POINTS_REFERRAL} баллов\n\n"
