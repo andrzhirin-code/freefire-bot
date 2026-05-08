@@ -260,26 +260,23 @@ def call_deepseek(prompt):
     except:
         return "❌ Ошибка ИИ."
 
-def handle_message(user_id, text, referral=None):
-    log(f"💬 user={user_id} text={text} ref={referral}")
+def handle_message(user_id, text, ref=None):
+    log(f"💬 user={user_id} text={text} ref={ref}")
     user = get_user(user_id)
     state = user_states.get(user_id, "MENU")
     t = text.strip()
 
     # Проверка реферала (первое сообщение)
-    if referral:
-        try:
-            ref_id = int(referral)
-            data, key = get_user_points(user_id)
-            data_ref, key_ref = get_user_points(ref_id)
-            if ref_id != user_id and not data[key].get("invited_by"):
-                data[key]["invited_by"] = ref_id
-                save_points(data)
-                add_points(ref_id, POINTS_REFERRER, "referral")
-                add_points(user_id, POINTS_REFERRAL, "referral_bonus")
-                send_message(user_id, f"🎉 Ты пришёл по реферальной ссылке!\n+{POINTS_REFERRAL} баллов тебе, +{POINTS_REFERRER} баллов другу!")
-        except:
-            pass
+    if ref and str(ref).isdigit():
+        ref_id = int(ref)
+        data, key = get_user_points(user_id)
+        if ref_id != user_id and not data[key].get("invited_by"):
+            data[key]["invited_by"] = ref_id
+            save_points(data)
+            add_points(ref_id, POINTS_REFERRER, "referral")
+            add_points(user_id, POINTS_REFERRAL, "referral_bonus")
+            send_message(user_id, f"🎉 Ты пришёл по реферальной ссылке!\n+{POINTS_REFERRAL} баллов тебе, +{POINTS_REFERRER} баллов другу!")
+            log(f"🔗 Реферал: {ref_id} пригласил {user_id}")
 
     if t.lower() in ["меню", "начать", "старт", "start"]:
         user_states[user_id] = "MENU"
@@ -310,7 +307,7 @@ def handle_message(user_id, text, referral=None):
     if t == "🔗 Моя ссылка":
         send_message(user_id,
             f"🔗 Твоя реферальная ссылка:\n\n"
-            f"👉 https://vk.com/write-{GROUP_ID}?referrer={user_id}\n\n"
+            f"👉 https://vk.com/write-{GROUP_ID}?ref={user_id}\n\n"
             f"Отправь её другу! Когда он впервые напишет боту:\n"
             f"✅ Ты получишь +{POINTS_REFERRER} баллов\n"
             f"✅ Друг получит +{POINTS_REFERRAL} баллов\n\n"
@@ -576,7 +573,7 @@ def longpoll_loop():
                     msg = update["object"]["message"]
                     uid = msg.get("from_id")
                     txt = msg.get("text", "")
-                    ref = msg.get("referral")
+                    ref = msg.get("ref")  # Правильное поле для рефералов
                     if uid and uid < 0: uid = abs(uid)
                     if uid and txt:
                         threading.Thread(target=handle_message, args=(uid, txt, ref)).start()
