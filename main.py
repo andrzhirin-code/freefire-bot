@@ -22,11 +22,11 @@ longpoll_ts = None
 POINTS_FILE = "/opt/render/project/src/points.json"
 POINTS_BACKUP = "/opt/render/project/src/points_backup.json"
 
-POINTS_LIKE = 5
-POINTS_COMMENT = 10
-POINTS_PREMIUM = 400
-POINTS_REFERRER = 50
-POINTS_REFERRAL = 25
+POINTS_LIKE = 4
+POINTS_COMMENT = 8
+POINTS_PREMIUM = 800
+POINTS_REFERRER = 40
+POINTS_REFERRAL = 20
 POINTS_EXPIRE_DAYS = 30
 MAX_LIKES_PER_DAY = 10
 MAX_COMMENTS_PER_DAY = 5
@@ -240,7 +240,7 @@ def premium_choice_kb():
         "one_time": False,
         "buttons": [
             [{"action": {"type": "text", "label": "💳 За 99₽"}, "color": "positive"},
-             {"action": {"type": "text", "label": "⭐ За 400 баллов"}, "color": "positive"}],
+             {"action": {"type": "text", "label": "⭐ За 800 баллов"}, "color": "positive"}],
             [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
         ]
     }
@@ -276,7 +276,6 @@ def handle_message(user_id, text, ref=None):
             add_points(ref_id, POINTS_REFERRER, "referral")
             add_points(user_id, POINTS_REFERRAL, "referral_bonus")
             send_message(user_id, f"🎉 Ты пришёл по реферальной ссылке!\n+{POINTS_REFERRAL} баллов тебе, +{POINTS_REFERRER} баллов другу!")
-            log(f"🔗 Реферал: {ref_id} пригласил {user_id}")
 
     if t.lower() in ["меню", "начать", "старт", "start"]:
         user_states[user_id] = "MENU"
@@ -293,18 +292,24 @@ def handle_message(user_id, text, ref=None):
             "one_time": False,
             "buttons": [
                 [{"action": {"type": "text", "label": "🔥 Обменять баллы"}, "color": "positive"}],
-                [{"action": {"type": "text", "label": "🔗 Моя ссылка"}, "color": "primary"}],
+                [{"action": {"type": "text", "label": "🔗 Моя реферальная ссылка"}, "color": "primary"}],
                 [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
                  {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
             ]
         }
+        info = (
+            f"📊 Как копить баллы:\n"
+            f"👍 Лайк: +{POINTS_LIKE} (макс {MAX_LIKES_PER_DAY}/день)\n"
+            f"💬 Комментарий: +{POINTS_COMMENT} (макс {MAX_COMMENTS_PER_DAY}/день)\n"
+            f"🔗 Реферал: +{POINTS_REFERRER} тебе, +{POINTS_REFERRAL} другу\n\n"
+        )
         if expired:
-            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}", keyboard=kb)
+            send_message(user_id, f"⌛ Баллы сгорели.\n\n⭐ Сейчас: 0 баллов\n🔥 Нужно: {POINTS_PREMIUM}\n\n{info}", keyboard=kb)
         else:
-            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}", keyboard=kb)
+            send_message(user_id, f"⭐ Твои баллы: {pts}\n🔥 Нужно: {POINTS_PREMIUM}\n📊 Не хватает: {need}\n\n{info}", keyboard=kb)
         return
 
-    if t == "🔗 Моя ссылка":
+    if t == "🔗 Моя реферальная ссылка":
         send_message(user_id,
             f"🔗 Твоя реферальная ссылка:\n\n"
             f"👉 https://vk.com/write-{GROUP_ID}?ref={user_id}\n\n"
@@ -348,10 +353,10 @@ def handle_message(user_id, text, ref=None):
         return
 
     if t == "💳 За 99₽":
-        send_message(user_id, "💳 Оплата пока в разработке.\n\n⭐ Ты можешь получить премиум за 400 баллов — активничай в паблике!", keyboard=premium_choice_kb())
+        send_message(user_id, "💳 Оплата пока в разработке.\n\n⭐ Ты можешь получить премиум за 800 баллов — активничай в паблике!", keyboard=premium_choice_kb())
         return
 
-    if t == "⭐ За 400 баллов":
+    if t == "⭐ За 800 баллов":
         data, key = get_user_points(user_id)
         check_points_expiry(user_id)
         pts = data[key]["points"]
@@ -573,7 +578,7 @@ def longpoll_loop():
                     msg = update["object"]["message"]
                     uid = msg.get("from_id")
                     txt = msg.get("text", "")
-                    ref = msg.get("ref")  # Правильное поле для рефералов
+                    ref = msg.get("ref")
                     if uid and uid < 0: uid = abs(uid)
                     if uid and txt:
                         threading.Thread(target=handle_message, args=(uid, txt, ref)).start()
