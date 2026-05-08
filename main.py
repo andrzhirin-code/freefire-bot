@@ -218,20 +218,19 @@ def send_menu(user_id):
     }
     send_message(user_id, "🎮 Привет, боец!\n\n📱 БЕСПЛАТНЫЕ НАСТРОЙКИ — готовые конфиги\n🔥 ПРЕМИУМ — ИИ подбирает лично под тебя\n⭐ БАЛЛЫ — активничай и меняй на премиум\n🛒 МАГАЗИН — перейти в магазин", keyboard=kb)
 
-def back_and_menu_kb():
-    return {
-        "one_time": False,
-        "buttons": [
-            [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-             {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
-        ]
-    }
-
 def back_to_question_kb():
     return {
         "one_time": False,
         "buttons": [
             [{"action": {"type": "text", "label": "↩ Вернуться к вопросу"}, "color": "secondary"}],
+        ]
+    }
+
+def menu_only_kb():
+    return {
+        "one_time": False,
+        "buttons": [
+            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
         ]
     }
 
@@ -249,7 +248,7 @@ def premium_choice_kb():
         "buttons": [
             [{"action": {"type": "text", "label": "💳 За 99₽"}, "color": "positive"},
              {"action": {"type": "text", "label": "⭐ За 800 баллов"}, "color": "positive"}],
-            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}],
+            [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
         ]
     }
 
@@ -313,7 +312,7 @@ def handle_message(user_id, text, ref=None):
             "buttons": [
                 [{"action": {"type": "text", "label": "🔥 Обменять баллы"}, "color": "positive"}],
                 [{"action": {"type": "text", "label": "🔗 Моя реферальная ссылка"}, "color": "primary"}],
-                [{"action": {"type": "text", "label": "← Назад в меню 🏠"}, "color": "secondary"}],
+                [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
             ]
         }
         info = (
@@ -351,8 +350,7 @@ def handle_message(user_id, text, ref=None):
                 row = []
         if row:
             kb["buttons"].append(row)
-        kb["buttons"].append([{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-                              {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}])
+        kb["buttons"].append([{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}])
         send_message(user_id, "📱 Выбери марку телефона:", keyboard=kb)
         return
 
@@ -423,7 +421,7 @@ def handle_message(user_id, text, ref=None):
         show_models_page(user_id, 1)
         return
 
-    if t in ["← Назад", "🏠 В меню", "← Назад в меню 🏠"]:
+    if t == "🏠 В меню":
         user_states[user_id] = "MENU"
         user_pages.pop(user_id, None)
         send_menu(user_id)
@@ -436,7 +434,7 @@ def handle_message(user_id, text, ref=None):
             "👉 https://vk.com/topic-193012947_12345678\n\n"
             "Мы добавим её в бота! 🔧\n\n"
             "А пока можешь получить персональную настройку через 🔥 Премиум — ИИ подберёт под любой телефон!",
-            keyboard=back_and_menu_kb())
+            keyboard=None)
         return
 
     phone = find_phone(t)
@@ -485,7 +483,7 @@ def handle_message(user_id, text, ref=None):
         corr = data[key].get("corrections_left", 0)
         if state == "AI_DONE" and corr > 0:
             user_states[user_id] = "CORRECTION"
-            send_message(user_id, f"🔄 Опиши проблему.\nОсталось: {corr}", keyboard=back_and_menu_kb())
+            send_message(user_id, f"🔄 Опиши проблему.\nОсталось: {corr}", keyboard=back_to_question_kb())
             return
         elif state == "CORRECTION" and corr > 0:
             data[key]["corrections_left"] = corr - 1
@@ -497,7 +495,7 @@ def handle_message(user_id, text, ref=None):
             send_message(user_id, response + f"\n\n🔄 Осталось: {data[key]['corrections_left']}")
             return
         else:
-            send_message(user_id, "❌ Лимит исчерпан.", keyboard=back_and_menu_kb())
+            send_message(user_id, "❌ Лимит исчерпан.", keyboard=back_to_question_kb())
             return
 
     if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
@@ -539,13 +537,22 @@ def show_models_page(user_id, direction=0):
     if row:
         kb["buttons"].append(row)
 
-    if page == total_pages:
+    if page == total_pages and total_pages > 0:
         kb["buttons"].append([{"action": {"type": "text", "label": "📱 Нет моей модели"}, "color": "negative"}])
 
-    nav_row = [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-               {"action": {"type": "text", "label": "🏠 В меню"}, "color": "secondary"}]
-    if page < total_pages:
-        nav_row.insert(1, {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"})
+    if page == 0 and total_pages > 0:
+        nav_row = [{"action": {"type": "text", "label": "← Назад"}, "color": "negative"},
+                   {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"},
+                   {"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}]
+    elif page > 0 and page < total_pages:
+        nav_row = [{"action": {"type": "text", "label": "← Назад"}, "color": "primary"},
+                   {"action": {"type": "text", "label": "Вперёд →"}, "color": "primary"},
+                   {"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}]
+    elif page == total_pages and total_pages > 0:
+        nav_row = [{"action": {"type": "text", "label": "← Назад"}, "color": "primary"},
+                   {"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}]
+    else:
+        nav_row = [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}]
     kb["buttons"].append(nav_row)
 
     send_message(user_id, f"📱 Выбери модель (стр. {page+1}/{total_pages+1}):", keyboard=kb)
