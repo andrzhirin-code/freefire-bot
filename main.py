@@ -444,7 +444,7 @@ def handle_message(user_id, text, ref=None):
         kb = {
             "inline": True,
             "buttons": [
-                [{"action": {"type": "open_link", "label": "❤️ Нажми чтобы добавить", "link": "https://vk.com/topic-193012947_49780771"}}],
+                [{"action": {"type": "open_link", "label": "Нажми чтобы добавить", "link": "https://vk.com/topic-193012947_49780771"}}],
             ]
         }
         send_message(user_id,
