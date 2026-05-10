@@ -240,7 +240,7 @@ def premium_inline_get_kb():
     return {
         "inline": True,
         "buttons": [
-            [{"action": {"type": "callback", "label": "🔥 Получить персональную настройку", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
+            [{"action": {"type": "callback", "label": "🔥 Премиум настройка", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
         ]
     }
 
