@@ -214,7 +214,7 @@ def send_menu(user_id):
             [{"action": {"type": "text", "label": "🔥 ПРЕМИУМ НАСТРОЙКА — 99₽"}, "color": "positive"}],
             [{"action": {"type": "text", "label": "🎯 Гайды"}, "color": "primary"},
              {"action": {"type": "text", "label": "💡 Игровые фишки"}, "color": "primary"}],
-            [{"action": {"type": "text", "label": "⭐ МОИ БАЛЛЫ"}, "color": "primary"}],
+            [{"action": {"type": "text", "label": "⭐ МОИ БАЛЛЫ"}, "color": "positive"}],
             [{"action": {"type": "open_link", "label": "🛒 МАГАЗИН", "link": "https://vk.com/market-193012947"}}],
         ]
     }
