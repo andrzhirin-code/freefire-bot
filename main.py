@@ -236,6 +236,14 @@ def premium_inline_kb():
         ]
     }
 
+def premium_inline_get_kb():
+    return {
+        "inline": True,
+        "buttons": [
+            [{"action": {"type": "callback", "label": "🔥 Получить персональную настройку", "payload": "{\"cmd\":\"premium\"}"}, "color": "positive"}]
+        ]
+    }
+
 def premium_choice_kb():
     return {
         "one_time": False,
@@ -342,7 +350,7 @@ def handle_message(user_id, text, ref=None):
             "Для мощных телефонов с большим экраном.\n\n"
             "💡 Совет: Не меняй раскладку первые 5 дней — мышцы должны привыкнуть.\n\n"
             "🔥 Хочешь персональный HUD под свой телефон?",
-            keyboard=premium_inline_kb())
+            keyboard=premium_inline_get_kb())
         return
 
     if t == "🎯 Чувствительность":
@@ -360,7 +368,7 @@ def handle_message(user_id, text, ref=None):
             "Пассив — сенса ниже -3-5\n"
             "Смешанный — средние значения\n\n"
             "🔥 Хочешь точные значения под свой телефон?",
-            keyboard=premium_inline_kb())
+            keyboard=premium_inline_get_kb())
         return
 
     if t == "🎯 Как улучшить точность":
@@ -372,7 +380,7 @@ def handle_message(user_id, text, ref=None):
             "4. Не двигайся когда стреляешь из снайперской винтовки.\n\n"
             "5. Настрой чувствительность так чтобы делать полный разворот одним свайпом.\n\n"
             "🔥 Нужна точная сенса под твой телефон?",
-            keyboard=premium_inline_kb())
+            keyboard=premium_inline_get_kb())
         return
 
     if t == "💣 Лучшие позиции":
@@ -390,7 +398,7 @@ def handle_message(user_id, text, ref=None):
             "▸ Мосты — засады и снайперские позиции\n\n"
             "💡 Совет: Всегда проверяй позицию дроном или гранатой перед входом.\n\n"
             "🔥 Хочешь идеальную сенсу для игры на этих позициях?",
-            keyboard=premium_inline_kb())
+            keyboard=premium_inline_get_kb())
         return
 
     if t == "🔫 Разбор оружия":
@@ -417,7 +425,7 @@ def handle_message(user_id, text, ref=None):
             "▸ Лучше всего: дальняя дистанция, быстрый скоп\n"
             "▸ Сенса: низкая общая, снайперская 55-62\n\n"
             "🔥 Хочешь персональную настройку под твоё оружие?",
-            keyboard=premium_inline_kb())
+            keyboard=premium_inline_get_kb())
         return
 
     if t == "❌ Частые ошибки":
@@ -437,7 +445,7 @@ def handle_message(user_id, text, ref=None):
             "5. Не используешь тренировочный режим\n"
             "▸ 10 минут тренировки перед игрой улучшат точность на 30%.\n\n"
             "🔥 Хочешь настройку которая исправит твои ошибки?",
-            keyboard=premium_inline_kb())
+            keyboard=premium_inline_get_kb())
         return
 
     # ==================== ОСТАЛЬНОЕ ====================
