@@ -244,6 +244,14 @@ def premium_inline_get_kb():
         ]
     }
 
+def how_to_earn_kb():
+    return {
+        "inline": True,
+        "buttons": [
+            [{"action": {"type": "callback", "label": "Как заработать баллы?", "payload": "{\"cmd\":\"how_to_earn\"}"}, "color": "primary"}]
+        ]
+    }
+
 def premium_choice_kb():
     return {
         "one_time": False,
@@ -448,6 +456,14 @@ def handle_message(user_id, text, ref=None):
             keyboard=premium_inline_get_kb())
         return
 
+    if t == "🚀 Чтобы заработать баллы:":
+        send_message(user_id,
+            f"🚀 Чтобы заработать баллы:\n"
+            f"❤ Лайкай записи — +{POINTS_LIKE} балла за лайк (до {MAX_LIKES_PER_DAY} лайков в день)\n"
+            f"💬 Пиши комменты — +{POINTS_COMMENT} баллов за коммент (до {MAX_COMMENTS_PER_DAY} комментариев в день)\n"
+            f"🔗 Приглашай друзей по ссылке — +{POINTS_REFERRER} баллов тебе за каждого друга и +{POINTS_REFERRAL} баллов каждому другу")
+        return
+
     # ==================== ОСТАЛЬНОЕ ====================
     if t == "⭐ МОИ БАЛЛЫ":
         expired = check_points_expiry(user_id)
@@ -531,7 +547,11 @@ def handle_message(user_id, text, ref=None):
             user_states[user_id] = "AI_ASK_PHONE"
             send_message(user_id, f"✅ Премиум активирован за {POINTS_PREMIUM} баллов!\nОсталось: {data[key]['points']}\n\n📱 Вопрос 1 из 7:\nНапиши модель телефона.", keyboard=back_to_question_kb())
         else:
-            send_message(user_id, f"❌ Не хватает баллов.\nУ тебя: {pts}\nНужно: {POINTS_PREMIUM}", keyboard=premium_choice_kb())
+            send_message(user_id,
+                f"❌ Не хватает баллов.\n"
+                f"У тебя: {pts}\n"
+                f"Нужно: {POINTS_PREMIUM}\n",
+                keyboard=how_to_earn_kb())
         return
 
     if t == "🔥 Обменять баллы":
@@ -767,6 +787,8 @@ def longpoll_loop():
                     vk_api("messages.sendMessageEventAnswer", {"event_id": obj.get("event_id"), "user_id": uid, "peer_id": obj.get("peer_id")})
                     if payload.get("cmd") == "premium":
                         threading.Thread(target=handle_message, args=(uid, "🔥 Хочу премиум", None)).start()
+                    elif payload.get("cmd") == "how_to_earn":
+                        threading.Thread(target=handle_message, args=(uid, "🚀 Чтобы заработать баллы:", None)).start()
                 elif update["type"] == "like_add":
                     uid = update["object"].get("liker_id", 0)
                     if uid:
