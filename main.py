@@ -441,13 +441,16 @@ def handle_message(user_id, text, ref=None):
         return
 
     if t == "📱 Нет моей модели":
+        kb = {
+            "inline": True,
+            "buttons": [
+                [{"action": {"type": "open_link", "label": "❤️ Нажми чтобы добавить", "link": "https://vk.com/topic-193012947_49780771"}}],
+            ]
+        }
         send_message(user_id,
-            "📱 Не нашёл свою модель?\n\n"
-            "Напиши её в нашем обсуждении:\n"
-            "👉 https://vk.com/topic-193012947_12345678\n\n"
-            "Мы добавим её в бота! 🔧\n\n"
-            "А пока можешь получить персональную настройку через 🔥 Премиум — ИИ подберёт под любой телефон!",
-            keyboard=None)
+            "🛑 Вашей модели нету в нашем боте?\n"
+            "Добавьте её написав в тему👇",
+            keyboard=kb)
         return
 
     phone = find_phone(t)
