@@ -336,7 +336,7 @@ def handle_message(user_id, text, ref=None):
                 [{"action": {"type": "text", "label": "🌐 Высокий пинг"}, "color": "primary"}],
                 [{"action": {"type": "text", "label": "❌ Не заходит в игру"}, "color": "primary"}],
                 [{"action": {"type": "text", "label": "🔥 Греется телефон"}, "color": "primary"}],
-                [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
+                [{"action": {"type": "text", "label": "← Назад"}, "color": "negative"},
                  {"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
             ]
         }
@@ -345,7 +345,6 @@ def handle_message(user_id, text, ref=None):
 
     # ==================== ИГРОВЫЕ ФИШКИ ====================
     if t == "💡 Игровые фишки":
-        user_states[user_id] = "FISHKI"
         kb = {
             "one_time": False,
             "buttons": [
@@ -353,8 +352,7 @@ def handle_message(user_id, text, ref=None):
                 [{"action": {"type": "text", "label": "💣 Лучшие позиции"}, "color": "primary"}],
                 [{"action": {"type": "text", "label": "🔫 Разбор оружия"}, "color": "primary"}],
                 [{"action": {"type": "text", "label": "❌ Частые ошибки"}, "color": "primary"}],
-                [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-                 {"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
+                [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
             ]
         }
         send_message(user_id, "💡 ИГРОВЫЕ ФИШКИ\n\nВыбери тему:", keyboard=kb)
@@ -722,34 +720,17 @@ def handle_message(user_id, text, ref=None):
         data = user_pages.get(user_id)
         if data and data["page"] > 0:
             show_models_page(user_id, -1)
-        elif user_states.get(user_id) in ["GUIDES", "FISHKI"]:
-            # Возврат в гайды или фишки
-            if user_states.get(user_id) == "GUIDES":
-                user_states[user_id] = "MENU"
-                kb = {
-                    "one_time": False,
-                    "buttons": [
-                        [{"action": {"type": "text", "label": "🎛 Настройка HUD"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "🎯 Чувствительность"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "🔧 Решение проблем"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
-                    ]
-                }
-                send_message(user_id, "🎯 ГАЙДЫ\n\nВыбери раздел:", keyboard=kb)
-            else:
-                user_states[user_id] = "MENU"
-                kb = {
-                    "one_time": False,
-                    "buttons": [
-                        [{"action": {"type": "text", "label": "🎯 Как улучшить точность"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "💣 Лучшие позиции"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "🔫 Разбор оружия"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "❌ Частые ошибки"}, "color": "primary"}],
-                        [{"action": {"type": "text", "label": "← Назад"}, "color": "secondary"},
-                         {"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
-                    ]
-                }
-                send_message(user_id, "💡 ИГРОВЫЕ ФИШКИ\n\nВыбери тему:", keyboard=kb)
+        elif user_states.get(user_id) == "GUIDES":
+            kb = {
+                "one_time": False,
+                "buttons": [
+                    [{"action": {"type": "text", "label": "🎛 Настройка HUD"}, "color": "primary"}],
+                    [{"action": {"type": "text", "label": "🎯 Чувствительность"}, "color": "primary"}],
+                    [{"action": {"type": "text", "label": "🔧 Решение проблем"}, "color": "primary"}],
+                    [{"action": {"type": "text", "label": "🏠 В меню"}, "color": "negative"}],
+                ]
+            }
+            send_message(user_id, "🎯 ГАЙДЫ\n\nВыбери раздел:", keyboard=kb)
         else:
             user_pages.pop(user_id, None)
             user_states[user_id] = "FREE_PHONES"
