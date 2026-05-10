@@ -320,6 +320,101 @@ def handle_message(user_id, text, ref=None):
         send_menu(user_id)
         return
 
+    # ==================== АДМИН-КОМАНДЫ ====================
+    if t.startswith("/") and user_id == ADMIN_ID:
+        parts = t.split()
+        cmd = parts[0]
+
+        if cmd == "/stat":
+            with points_lock:
+                total = len(points_data)
+                total_points = sum(v.get("points", 0) for v in points_data.values())
+                premium_count = sum(1 for v in points_data.values() if v.get("corrections_left", 0) > 0)
+                banned = sum(1 for v in points_data.values() if v.get("banned"))
+            send_message(user_id, f"📊 СТАТИСТИКА БОТА\n\n👥 Пользователей: {total}\n⭐ Всего баллов: {total_points}\n🔥 Премиумов: {premium_count}\n🚫 Забанено: {banned}\n📱 Моделей в базе: {len(PHONES)}")
+            return
+
+        if cmd == "/top":
+            with points_lock:
+                top = sorted(points_data.items(), key=lambda x: x[1]["points"], reverse=True)[:20]
+            top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
+            send_message(user_id, f"🏆 ТОП-20\n\n{top_str}")
+            return
+
+        if cmd == "/give" and len(parts) >= 3:
+            try:
+                target_id = int(parts[1])
+                amount = int(parts[2])
+                if add_points(target_id, amount, "admin"):
+                    send_message(user_id, f"✅ Пользователю {target_id} начислено {amount} баллов.")
+                else:
+                    send_message(user_id, f"❌ Не удалось начислить баллы пользователю {target_id}.")
+            except ValueError:
+                send_message(user_id, "❌ Формат: /give ID СУММА")
+            return
+
+        if cmd == "/take" and len(parts) >= 3:
+            try:
+                target_id = int(parts[1])
+                amount = int(parts[2])
+                if add_points(target_id, -amount, "admin"):
+                    send_message(user_id, f"✅ У пользователя {target_id} снято {amount} баллов.")
+                else:
+                    send_message(user_id, f"❌ Не удалось снять баллы у пользователя {target_id}.")
+            except ValueError:
+                send_message(user_id, "❌ Формат: /take ID СУММА")
+            return
+
+        if cmd == "/ban" and len(parts) >= 2:
+            try:
+                target_id = int(parts[1])
+                data, key = get_user_points(target_id)
+                data[key]["banned"] = True
+                save_points(data)
+                send_message(user_id, f"🚫 Пользователь {target_id} заблокирован.")
+            except ValueError:
+                send_message(user_id, "❌ Формат: /ban ID")
+            return
+
+        if cmd == "/unban" and len(parts) >= 2:
+            try:
+                target_id = int(parts[1])
+                data, key = get_user_points(target_id)
+                data[key]["banned"] = False
+                save_points(data)
+                send_message(user_id, f"✅ Пользователь {target_id} разблокирован.")
+            except ValueError:
+                send_message(user_id, "❌ Формат: /unban ID")
+            return
+
+        if cmd == "/msg" and len(parts) >= 3:
+            target = parts[1]
+            msg_text = " ".join(parts[2:])
+            if target == "всем" or target == "all":
+                count = 0
+                for uid in list(points_data.keys()):
+                    if not points_data[uid].get("banned"):
+                        try:
+                            send_message(int(uid), f"📢 {msg_text}")
+                            count += 1
+                            time.sleep(0.05) # Защита от лимитов VK API
+                        except:
+                            pass
+                send_message(user_id, f"✅ Рассылка отправлена {count} пользователям.")
+            else:
+                try:
+                    target_id = int(target)
+                    send_message(target_id, f"📢 {msg_text}")
+                    send_message(user_id, f"✅ Сообщение отправлено пользователю {target}.")
+                except ValueError:
+                    send_message(user_id, "❌ Неверный ID пользователя.")
+            return
+
+        if cmd == "/reload":
+            load_points()
+            send_message(user_id, f"✅ База перезагружена. Пользователей: {len(points_data)}.")
+            return
+
     # ==================== ГАЙДЫ ====================
     if t == "🎯 Гайды":
         user_states[user_id] = "GUIDES"
@@ -369,78 +464,6 @@ def handle_message(user_id, text, ref=None):
         send_message(user_id, "💡 ИГРОВЫЕ ФИШКИ\n\nВыбери тему:", keyboard=kb)
         return
 
-    # ==================== АДМИН-КОМАНДЫ ====================
-    if t.startswith("/") and user_id == ADMIN_ID:
-        parts = t.split()
-        cmd = parts[0]
-
-        if cmd == "/stat":
-            with points_lock:
-                total = len(points_data)
-                total_points = sum(v.get("points", 0) for v in points_data.values())
-                premium_count = sum(1 for v in points_data.values() if v.get("corrections_left", 0) > 0)
-                banned = sum(1 for v in points_data.values() if v.get("banned"))
-            send_message(user_id, f"📊 СТАТИСТИКА БОТА\n\n👥 Пользователей: {total}\n⭐ Всего баллов: {total_points}\n🔥 Премиумов: {premium_count}\n🚫 Забанено: {banned}\n📱 Моделей в базе: {len(PHONES)}")
-            return
-
-        if cmd == "/top":
-            with points_lock:
-                top = sorted(points_data.items(), key=lambda x: x[1]["points"], reverse=True)[:20]
-            top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
-            send_message(user_id, f"🏆 ТОП-20\n\n{top_str}")
-            return
-
-        if cmd == "/give" and len(parts) >= 3:
-            target_id = int(parts[1])
-            amount = int(parts[2])
-            add_points(target_id, amount, "admin")
-            send_message(user_id, f"✅ Пользователю {target_id} начислено {amount} баллов.")
-            return
-
-        if cmd == "/take" and len(parts) >= 3:
-            target_id = int(parts[1])
-            amount = int(parts[2])
-            add_points(target_id, -amount, "admin")
-            send_message(user_id, f"✅ У пользователя {target_id} снято {amount} баллов.")
-            return
-
-        if cmd == "/ban" and len(parts) >= 2:
-            target_id = int(parts[1])
-            data, key = get_user_points(target_id)
-            data[key]["banned"] = True
-            save_points(data)
-            send_message(user_id, f"🚫 Пользователь {target_id} заблокирован.")
-            return
-
-        if cmd == "/unban" and len(parts) >= 2:
-            target_id = int(parts[1])
-            data, key = get_user_points(target_id)
-            data[key]["banned"] = False
-            save_points(data)
-            send_message(user_id, f"✅ Пользователь {target_id} разблокирован.")
-            return
-
-        if cmd == "/msg" and len(parts) >= 3:
-            target = parts[1]
-            msg_text = " ".join(parts[2:])
-            if target == "всем" or target == "all":
-                count = 0
-                for uid in points_data:
-                    if not points_data[uid].get("banned"):
-                        send_message(int(uid), f"📢 {msg_text}")
-                        count += 1
-                        time.sleep(0.1)
-                send_message(user_id, f"✅ Рассылка отправлена {count} пользователям.")
-            else:
-                send_message(int(target), f"📢 {msg_text}")
-                send_message(user_id, f"✅ Сообщение отправлено пользователю {target}.")
-            return
-
-        if cmd == "/reload":
-            load_points()
-            send_message(user_id, f"✅ База перезагружена. Пользователей: {len(points_data)}.")
-            return
-
     # ==================== СОДЕРЖАНИЕ РАЗДЕЛОВ ====================
     if t == "🎛 Настройка раскладки (HUD)":
         send_message(user_id,
@@ -484,11 +507,7 @@ def handle_message(user_id, text, ref=None):
             "Гироскоп — это когда ты наклоняешь телефон чтобы довести прицел.\n"
             "Это НЕ замена пальцу. Палец для разворотов, гироскоп для точности.\n\n"
             "Стартовые значения для новичка:\n"
-            "▸ Без прицела: 80\n"
-            "▸ Коллиматор: 70\n"
-            "▸ 2x: 55\n"
-            "▸ 4x: 35\n"
-            "▸ Снайперский: 15\n\n"
+            "▸ Без прицела: 80\n▸ Коллиматор: 70\n▸ 2x: 55\n▸ 4x: 35\n▸ Снайперский: 15\n\n"
             "Как привыкать:\n"
             "1. Сначала только доводи прицел гироскопом\n"
             "2. Потом используй для контроля отдачи\n"
@@ -521,7 +540,6 @@ def handle_message(user_id, text, ref=None):
             keyboard=premium_inline_get_kb())
         return
 
-    # Остальные разделы без изменений...
     if t == "🐌 Лагает / низкий FPS":
         send_message(user_id,
             "🐌 ЛАГАЕТ / НИЗКИЙ FPS\n\n"
@@ -550,7 +568,7 @@ def handle_message(user_id, text, ref=None):
     if t == "❌ Не заходит в игру":
         send_message(user_id,
             "❌ НЕ ЗАХОДИТ В ИГРУ\n\n"
-            "1. Очисти данные игры:\n   Настройки → Приложения → Free Fire → Очистить данные\n   (настройки сбросятся, аккаунт сохранится)\n\n"
+            "1. Очисти данные игры:\n   Настройки → Приложения → Free Fire → Очистить данные (настройки сбросятся, аккаунт сохранится)\n\n"
             "2. Переустанови игру — удали и скачай заново\n\n"
             "3. Обнови сервисы Google:\n   Google Play Services и Android System WebView\n\n"
             "4. Проверь память — должно быть свободно минимум 2 ГБ\n\n"
@@ -882,14 +900,6 @@ def handle_message(user_id, text, ref=None):
         else:
             send_message(user_id, "❌ Лимит исчерпан.", keyboard=back_to_question_kb())
             return
-
-    if t in ["/stat", "/admin"] and user_id == ADMIN_ID:
-        with points_lock:
-            total = len(points_data)
-            top = sorted(points_data.items(), key=lambda x: x[1]["points"], reverse=True)[:10]
-        top_str = "\n".join([f"{i+1}. ID {k}: {v['points']} баллов" for i, (k, v) in enumerate(top)])
-        send_message(user_id, f"📊 СТАТИСТИКА\n👥 Пользователей: {total}\n📱 Моделей: {len(PHONES)}\n\n🏆 Топ-10:\n{top_str}")
-        return
 
     send_message(user_id, "❌ Я отвечаю только по настройкам Free Fire.\nНапиши «меню».")
 
